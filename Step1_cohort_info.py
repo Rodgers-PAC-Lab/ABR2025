@@ -1,3 +1,10 @@
+# This script goes through 'mouse_info.csv'
+# For each date and mouse, it gets the recording metadata for those recordings
+# and checks to make sure it can load the data files.
+# At the end of the script it creates these pickles:
+#   recording_metadata: all the recording metadata from all dates and mice
+#   cohort_experiments: mouse_info.csv with proper formats and with age computed
+
 import os
 import datetime
 import glob
@@ -7,37 +14,20 @@ import pandas
 import abr
 import tqdm
 
-# This script goes through 'mouse_info.csv'
-# For each date and mouse, it gets the recording metadata for those recordings
-# and checks to make sure it can load the data files.
-# At the end of the script it creates these pickles:
-#   recording_metadata: all the recording metadata from all dates and mice
-#   cohort_experiments: mouse_info.csv with proper formats and with age computed
-
-# BEFORE RUNNING THIS SCRIPT:
-#   * Your computer's filepaths to raw data and pickles should be
-#       in filepaths.json
-#   * In your pickles directory, make a directory for this cohort with the
-#       same name as 'cohort_name'
-#   * In that cohort directory, create 'mouse'info.csv' with the information
-#       about all the mice and run dates you want to include in this cohort.
-
-## Cohort Analysis' Information
-cohort_name = '250630_cohort'
 
 ## Paths
-json_filepath = os.path.normpath(os.path.expanduser(
-    '~/dev/scripts/rowan/ABR_data/filepaths.json'))
-GUIdata_directory,Pickle_directory = abr.loading.get_ABR_data_paths(json_filepath)
-# Use cohort pickle directory
-cohort_pickle_directory = os.path.join(Pickle_directory, cohort_name)
+# Load paths to raw data and output directory
+with open('filepaths.json') as fi:
+    paths = json.load(fi)
+
+raw_data_directory = paths['raw_data_directory']
+output_directory = paths['output_directory']
+
 
 ## Load notes about the cohort
 # Columns: date, mouse, sex, strain, genotype, DOB, HL
-cohort_experiments = pandas.read_csv(os.path.join(
-    cohort_pickle_directory, 'mouse_info.csv'))
+cohort_experiments = pandas.read_csv('mouse_info.csv')
 cohort_mice = cohort_experiments['mouse'].unique()
-
 
 # Turn the dates into actual datetime dates
 cohort_experiments['date'] = cohort_experiments['date'].apply(
@@ -49,6 +39,7 @@ cohort_experiments['DOB'] = cohort_experiments['DOB'].apply(
 cohort_experiments.insert(5,'age',
                 (cohort_experiments['date']-cohort_experiments['DOB']).values)
 cohort_experiments['age'] = cohort_experiments['age'].apply(lambda x: x.days)
+
 
 ## Load metadata from each session
 # An "experiment" is a series of "recordings" on a single day from a single mouse
@@ -137,7 +128,7 @@ for recording in tqdm.tqdm( recording_metadata.index):
         data = abr.loading.load_recording(recording_folder)
     except IOError as e:
         # If not, mark 'include' as False
-        print(f'cannot load data from {i_metadata['datafile']}, marking to exclude')
+        #~ print(f'cannot load data from {i_metadata['datafile']}, marking to exclude')
         print(e)
         recording_metadata.loc[recording, 'include'] = False
 
