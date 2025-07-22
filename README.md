@@ -21,12 +21,12 @@ Clone the following repositories in a location on your PYTHONPATH:
 Do these steps before running these scripts.
 - Download the data from XYZ. 
 - Create a file called `filepaths.json` in the same directory as this README.
-  This file should contain JSON text like the following:
+  This file should contain JSON text like the following (without the triple quotes):
 
 '''
 {
- "raw_data_directory": "/home/chris/mnt/cuttlefish/abr_data",
- "output_directory": "/home/chris/mnt/cuttlefish/data/20250720_abr_paper_data"
+ "raw_data_directory": "/home/chris/mnt/cuttlefish/surgery/abr_data",
+ "output_directory": "/home/chris/mnt/cuttlefish/chris/data/20250720_abr_paper_data"
 }
 '''
 
