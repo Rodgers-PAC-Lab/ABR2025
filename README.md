@@ -5,6 +5,17 @@
 This repository contains all the scripts you need to reproduce the figures
 in Gargiullo et al. 
 
+## Requirements
+
+Install the following dependencies into your environment:
+- conda install numpy
+- pip install ffmpeg-python
+
+TODO: Add version numbers
+
+Clone the following repositories in a location on your PYTHONPATH:
+- git clone git@github.com:Rodgers-PAC-Lab/paclab.git
+
 ## Getting started
 
 Do these steps before running these scripts.
