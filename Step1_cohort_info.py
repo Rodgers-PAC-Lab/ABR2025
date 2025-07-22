@@ -23,6 +23,11 @@ with open('filepaths.json') as fi:
 raw_data_directory = paths['raw_data_directory']
 output_directory = paths['output_directory']
 
+# Create output_directory if it doesn't exist already (e.g., if this is the
+# first run)
+if not os.path.exists(output_directory):
+    os.mkdir(output_directory)
+
 
 ## Load notes about the cohort
 # Columns: date, mouse, sex, strain, genotype, DOB, HL
@@ -74,7 +79,7 @@ for i_day in cohort_experiments['date'].unique():
         experimenter = day_metadata['experimenter'].unique()[0]
         metadata_version = day_metadata['metadata_version'].unique()[0]
         # Form data_directory where both the notes csv and recording data are stored
-        data_directory = os.path.join(GUIdata_directory, folder_datestr, experimenter)
+        data_directory = os.path.join(raw_data_directory, folder_datestr, experimenter)
         # Load metadata for the day
         day_notes = abr.loading.get_metadata(data_directory, i_day.strftime('%y%m%d'), metadata_version)
         # Remove mice that aren't in the cohort
@@ -92,7 +97,7 @@ for i_day in cohort_experiments['date'].unique():
             experimenter = day_metadata.loc[mouse]['experimenter']
             metadata_version = day_metadata.loc[mouse]['metadata_version']
             # Form data_directory where both the notes csv and recording data are stored
-            data_directory = os.path.join(GUIdata_directory, folder_datestr, experimenter)
+            data_directory = os.path.join(raw_data_directory, folder_datestr, experimenter)
             # Load metadata for the day
             day_notes = abr.loading.get_metadata(data_directory, i_day.strftime('%y%m%d'), metadata_version)
             mouse_notes = day_notes.loc[day_notes['mouse']==mouse]
@@ -134,7 +139,7 @@ for recording in tqdm.tqdm( recording_metadata.index):
 
 
 ## Store
-cohort_experiments.to_pickle(os.path.join(cohort_pickle_directory, 'cohort_experiments'))
-recording_metadata.to_pickle(os.path.join(cohort_pickle_directory, 'recording_metadata'))
+cohort_experiments.to_pickle(os.path.join(output_directory, 'cohort_experiments'))
+recording_metadata.to_pickle(os.path.join(output_directory, 'recording_metadata'))
 
 print('Done')
