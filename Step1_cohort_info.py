@@ -14,6 +14,10 @@ import pandas
 from paclab import abr
 import tqdm
 
+## Cohort Analysis' Information
+# Uncomment if you're running scripts directly, but if running for both cohorts
+# cohort_name = '250630_cohort'
+# cohort_mice_csv = '250630_cohort_mouse_info.csv'
 
 ## Paths
 # Load the required file filepaths.json (see README)
@@ -24,15 +28,17 @@ with open('filepaths.json') as fi:
 raw_data_directory = paths['raw_data_directory']
 output_directory = paths['output_directory']
 
+# Make an output subfolder for the cohort you're running
+output_directory = os.path.join(output_directory, cohort_name)
+
 # Create output_directory if it doesn't exist already (for example, 
 # if this is the first run)
 if not os.path.exists(output_directory):
     os.mkdir(output_directory)
 
-
 ## Load notes about the cohort
 # Columns: date, mouse, sex, strain, genotype, DOB, HL
-cohort_experiments = pandas.read_csv('mouse_info.csv')
+cohort_experiments = pandas.read_csv(cohort_mice_csv)
 cohort_mice = cohort_experiments['mouse'].unique()
 
 # Turn the dates into actual datetime dates
@@ -55,7 +61,7 @@ cohort_experiments['age'] = cohort_experiments['age'].apply(lambda x: x.days)
 # On disk, all data from the same day are combined into the same dated directory,
 # so experiments are mixed together
 #
-# For every day, there is a _notes_v5.csv file in the GUI data directory, and
+# For every day, there is a _notes_v6.csv file in the GUI data directory, and
 # that csv file labels the mouse for every recording on that day
 #
 # Here, we loop over the experiments (e.g., mouse * day), and get the metadata
@@ -73,8 +79,8 @@ for i_day in cohort_experiments['date'].unique():
     # Most of the time, it'll be the same experimenter on the same day.
     # Then we can just load that metadata csv once instead of per-mouse.
     if len(day_metadata['experimenter'].unique()) == 1:
-        # We ABSOLUTELY should not have a case where the same experimenter, same day,
-        # is using two different versions of metadata
+        # We ABSOLUTELY should not have a case where the same experimenter,
+        # same day, is using two different versions of metadata
         assert len(day_metadata['metadata_version'].unique())==1
 
         experimenter = day_metadata['experimenter'].unique()[0]

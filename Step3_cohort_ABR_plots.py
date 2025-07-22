@@ -26,8 +26,8 @@ import numpy as np
 import matplotlib
 matplotlib.use('TkAgg')
 import pandas
-import abr
-import abr.abr_plotting
+import paclab.abr
+import paclab.abr.abr_plotting
 import my.plot
 import matplotlib.pyplot as plt
 
@@ -53,80 +53,11 @@ def HL_type(mouse):
         res = 'ERROR, UNKNOWN MOUSE'
     return res
 
-def plot_abr_given_mice_time_lists(avged_abrs_timepoints, mouse_l,timepoints_l, title_txt, sampling_rate=16000,
-                                   figsize=(10,10),legend_anchor=(1.2,1)):
-    # Get time in ms
-    t = avged_abrs_timepoints.columns / sampling_rate * 1000
 
-    # Select data based on mise and timepoints
-    subdf = avged_abrs_timepoints.loc[timepoints_l, mouse_l,:]
-    subdf = subdf.groupby(['channel','speaker_side','label']).mean()
-    config_l = subdf.index.droplevel(['label']).drop_duplicates().tolist()
-    channel_l = subdf.index.get_level_values('channel').unique()
-    speaker_side_l = subdf.index.get_level_values('speaker_side').unique()
-
-    # Make plot
-    f, axa = plt.subplots(3,2,
-        sharex=True, figsize=figsize)
-    f.subplots_adjust(left=.1, right=.9, top=.9, bottom=.06, wspace=0.05)
-    f.suptitle(title_txt +' averaged', fontsize=18, fontweight='bold')
-
-    # Plot each one
-    gobj = subdf.groupby(['channel', 'speaker_side'])
-    for (channel, speaker_side), subdf in gobj:
-        # droplevel
-        subdf = subdf.droplevel(['channel', 'speaker_side'])
-        subdf = subdf.sort_index(ascending=False)
-        # Get ax
-        if axa.shape == (3, 2):
-            ax = axa[
-                channel_l.get_loc(channel),
-                speaker_side_l.get_loc(speaker_side),
-            ]
-        else:
-            ax = axa[channel_l.get_loc(channel)]
-        # Plot
-        # Make colorbar
-        for label_i in subdf.index:
-            aut_colorbar = abr.abr_plotting.generate_colorbar(
-                len(subdf.index), mapname='inferno_r', start=0.12, stop=1)
-            color_df = pandas.DataFrame(aut_colorbar,
-                                        index=subdf.index.sort_values(ascending=True))
-            ax.plot(t, subdf.loc[label_i].T * 1e6, lw=.75,
-                    color=color_df.loc[label_i], label=label_i)
-
-        # Title
-        ax.set_title('{} {}'.format(channel, speaker_side))
-
-        # Pretty
-        ax.set_xlim((t[0], t[-1]))
-        ax.set_ylim(-4.2, 4.2)
-        my.plot.despine(ax)
-
-        if axa.shape == (3, 2):
-            if ax in axa[-1]:
-                ax.set_xlabel('time (ms)')
-
-            if ax in axa[:, 0]:
-                ax.set_ylabel('ABR (uV)')
-
-        else:
-            ax.set_xlabel('time (ms)')
-            ax.set_ylabel('ABR (uV)')
-
-    # Remove any empty axes
-    for ax in axa.flatten():
-        if len(ax.lines) == 0:
-            ax.set_visible(False)
-
-    axa[1, 1].legend(loc='upper right', bbox_to_anchor=legend_anchor)
-
-    return f,axa
-
-def plot_single_ax_abr(abr_subdf, ax):
-
+def plot_single_ax_abr(abr_subdf, ax, sampling_rate=16000):
+    t = abr_subdf.columns/ sampling_rate * 1000
     for label_i in abr_subdf.index.sort_values(ascending=False):
-        aut_colorbar = abr.abr_plotting.generate_colorbar(
+        aut_colorbar = paclab.abr.abr_plotting.generate_colorbar(
             len(abr_subdf.index), mapname='inferno_r', start=0.15, stop=1)
         color_df = pandas.DataFrame(aut_colorbar,
                                     index=abr_subdf.index.sort_values(ascending=True))
@@ -141,18 +72,22 @@ loudest_dB = 91
 # Tenatative because I'm blinded, but come on it's obvious
 sham_mouse_l = ['Cat_227', 'Cat_228']
 bilateral_mouse_l = ['Cat_226', 'Cat_229']
-# pre_times_l = ['apreA','apreB']
-# post_times_l = ['postA','postB']
+pre_times_l = ['apreA','apreB']
+post_times_l = ['postA','postB']
 
 ## Cohort Analysis' Information
 cohort_name = '250630_cohort'
 
 ## Paths
-json_filepath = os.path.normpath(os.path.expanduser(
-    '~/dev/scripts/rowan/ABR_data/filepaths.json'))
-GUIdata_directory,Pickle_directory = abr.loading.get_ABR_data_paths(json_filepath)
+with open('filepaths.json') as fi:
+    paths = json.load(fi)
+
+# Parse into paths to raw data and output directory
+raw_data_directory = paths['raw_data_directory']
+output_directory = paths['output_directory']
+
 # Use cohort pickle directory
-cohort_pickle_directory = os.path.join(Pickle_directory, cohort_name)
+cohort_pickle_directory = os.path.join(output_directory, cohort_name)
 if not os.path.exists(cohort_pickle_directory):
     try:
         os.mkdir(cohort_pickle_directory)
@@ -361,9 +296,6 @@ PLOT_ABR_COMPARE_DAYS = False
 ABR_POWER_VS_LEVEL_MOUSE_COMPARE_DAYS = False
 
 IMSHOW_ABRS = False
-
-PLOT_COHORT_AVG_ABR = False
-
 PLOT_ABR_POWER_VS_LEVEL_ALL_MICE = False
 PLOT_ABR_POWER_POSTHL_SHIFTED = False
 
@@ -701,35 +633,6 @@ if IMSHOW_ABRS:
     savename = os.path.join(cohort_pickle_directory, (cohort_name + '_IMSHOW_ABRS'))
     f.savefig((savename + '.png'), dpi=300)
     f.savefig((savename + '.svg'))
-
-if PLOT_COHORT_AVG_ABR:
-    f, axa = plot_abr_given_mice_time_lists(avged_abrs_timepoints, bilateral_mouse_l, pre_times_l,
-            'Bilateral HL mice pre-HL', figsize=(8, 8), legend_anchor=(1.25, 1))
-    # Save figure
-    savename = 'PLOT_ABR_BILATERAL_PREHL_AVG'
-    f.savefig(os.path.join(cohort_pickle_directory, savename + '.svg'))
-    f.savefig(os.path.join(cohort_pickle_directory, savename + '.png'), dpi=300)
-
-    f, axa = plot_abr_given_mice_time_lists(avged_abrs_timepoints, sham_mouse_l, pre_times_l,
-        "Sham mice pre-HL", figsize=(8, 8), legend_anchor=(1.25, 1))
-    # Save figure
-    savename = 'PLOT_ABR_SHAM_PREHL_AVG'
-    f.savefig(os.path.join(cohort_pickle_directory, savename + '.svg'))
-    f.savefig(os.path.join(cohort_pickle_directory, savename + '.png'), dpi=300)
-
-    f, axa = plot_abr_given_mice_time_lists(avged_abrs_timepoints, bilateral_mouse_l, post_times_l,
-            'Bilateral HL mice post-HL', figsize=(8, 8), legend_anchor=(1.25, 1))
-    # Save figure
-    savename = 'PLOT_ABR_BILATERAL_POSTHL_AVG'
-    f.savefig(os.path.join(cohort_pickle_directory, savename + '.svg'))
-    f.savefig(os.path.join(cohort_pickle_directory, savename + '.png'), dpi=300)
-
-    f, axa = plot_abr_given_mice_time_lists(avged_abrs_timepoints, sham_mouse_l, post_times_l,
-        "Sham mice post-HL", figsize=(8, 8), legend_anchor=(1.25, 1))
-    # Save figure
-    savename = 'PLOT_ABR_SHAM_POSTHL_AVG'
-    f.savefig(os.path.join(cohort_pickle_directory, savename + '.svg'))
-    f.savefig(os.path.join(cohort_pickle_directory, savename + '.png'), dpi=300)
 
 if PLOT_ABR_POWER_VS_LEVEL_ALL_MICE:
     # Compare mice averaged pre v post-HL.

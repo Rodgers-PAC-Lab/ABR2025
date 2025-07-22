@@ -7,8 +7,8 @@ import json
 import scipy.signal
 import numpy as np
 import pandas
-import abr
-import abr.signal_processing
+from paclab import abr
+import paclab.abr.signal_processing
 import my.plot
 import matplotlib.pyplot as plt
 import tqdm
@@ -33,14 +33,18 @@ abs_max_sigma = 3
 stdev_sigma = 3
 
 ## Cohort Analysis' Information
-cohort_name = '250630_cohort'
+# cohort_name = '250630_cohort'
 
 ## Paths
-json_filepath = os.path.normpath(os.path.expanduser(
-    '~/dev/scripts/rowan/ABR_data/filepaths.json'))
-GUIdata_directory,Pickle_directory = abr.loading.get_ABR_data_paths(json_filepath)
+with open('filepaths.json') as fi:
+    paths = json.load(fi)
+
+# Parse into paths to raw data and output directory
+raw_data_directory = paths['raw_data_directory']
+output_directory = paths['output_directory']
+
 # Use cohort pickle directory
-cohort_pickle_directory = os.path.join(Pickle_directory, cohort_name)
+cohort_pickle_directory = os.path.join(output_directory, cohort_name)
 if not os.path.exists(cohort_pickle_directory):
     try:
         os.mkdir(cohort_pickle_directory)
@@ -206,11 +210,6 @@ big_click_params = pandas.concat(
     ).set_index('t_samples', append=True).droplevel(None).sort_index()
 
 
-## Store
-big_triggered_ad.to_pickle(os.path.join(cohort_pickle_directory, 'big_triggered_ad'))
-big_triggered_neural.to_pickle(os.path.join(cohort_pickle_directory, 'big_triggered_neural'))
-big_click_params.to_pickle(os.path.join(cohort_pickle_directory, 'big_click_params'))
-
 ## Remove outliers, aggregate, and average ABRs
 
 # Count the number of trials in each experiment
@@ -331,5 +330,8 @@ threshold_db = pandas.DataFrame(threshold_db, columns=['threshold'])
 
 
 ## Store
+big_triggered_ad.to_pickle(os.path.join(cohort_pickle_directory, 'big_triggered_ad'))
+big_triggered_neural.to_pickle(os.path.join(cohort_pickle_directory, 'big_triggered_neural'))
+big_click_params.to_pickle(os.path.join(cohort_pickle_directory, 'big_click_params'))
 big_abrs.to_pickle(os.path.join(cohort_pickle_directory, 'big_abrs'))
 threshold_db.to_pickle(os.path.join(cohort_pickle_directory, 'thresholds'))
