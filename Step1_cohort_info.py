@@ -16,15 +16,16 @@ import tqdm
 
 
 ## Paths
-# Load paths to raw data and output directory
+# Load the required file filepaths.json (see README)
 with open('filepaths.json') as fi:
     paths = json.load(fi)
 
+# Parse into paths to raw data and output directory
 raw_data_directory = paths['raw_data_directory']
 output_directory = paths['output_directory']
 
-# Create output_directory if it doesn't exist already (e.g., if this is the
-# first run)
+# Create output_directory if it doesn't exist already (for example, 
+# if this is the first run)
 if not os.path.exists(output_directory):
     os.mkdir(output_directory)
 
