@@ -77,25 +77,22 @@ bilateral_mouse_l = ['Cat_226', 'Cat_229']
 pre_times_l = ['apreA', 'apreB']
 post_times_l = ['postA', 'postB']
 
-## Paths
-GUIdata_directory, Pickle_directory = (paclab.abr.loading.get_ABR_data_paths())
-Pickle_directory = os.path.expanduser('~/mnt/cuttlefish/rowan/ABR/Figs_Pickles')
 
-cohort_name = datestring + day_directory
-# Use cohort pickle directory
-cohort_pickle_directory = os.path.join(Pickle_directory, cohort_name)
-if not os.path.exists(cohort_pickle_directory):
-    try:
-        os.mkdir(cohort_pickle_directory)
-    except:
-        print("No pickle directory exists and this script doesn't have permission to create one.")
-        print("Check your Pickle_directory file path.")
+## Paths
+# Load the required file filepaths.json (see README)
+with open('filepaths.json') as fi:
+    paths = json.load(fi)
+
+# Parse into paths to raw data and output directory
+raw_data_directory = paths['raw_data_directory']
+output_directory = paths['output_directory']
+
 
 ## Load results of Step1
 cohort_experiments = pandas.read_pickle(
-    os.path.join(cohort_pickle_directory, 'cohort_experiments'))
+    os.path.join(output_directory, 'cohort_experiments'))
 recording_metadata = pandas.read_pickle(
-    os.path.join(cohort_pickle_directory, 'recording_metadata'))
+    os.path.join(output_directory, 'recording_metadata'))
 # Fillna
 cohort_experiments['HL'] = cohort_experiments['HL'].fillna('none')
 
@@ -125,11 +122,11 @@ recording_metadata = recording_metadata[recording_metadata['include'] == True]
 
 ## Load results of Step2
 big_triggered_neural = pandas.read_pickle(
-    os.path.join(cohort_pickle_directory, 'big_triggered_neural'))
+    os.path.join(output_directory, 'big_triggered_neural'))
 big_abrs = pandas.read_pickle(
-    os.path.join(cohort_pickle_directory, 'big_abrs'))
+    os.path.join(output_directory, 'big_abrs'))
 threshold_db = pandas.read_pickle(
-    os.path.join(cohort_pickle_directory, 'thresholds'))
+    os.path.join(output_directory, 'thresholds'))
 
 # Average ABRs across recordings
 avged_abrs = big_abrs.groupby(['date', 'mouse', 'channel', 'speaker_side', 'label']).mean()
@@ -283,11 +280,11 @@ between_ears_stds = between_ears_stds.set_index(['date', 'mouse'])
 
 mouse_l = big_abrs.index.get_level_values('mouse').unique()
 
-GRAND_AVG_ABR_PLOT = False
+GRAND_AVG_ABR_PLOT = True
 GRAND_AVG_IMSHOW = False
 GRAND_AVG_IPSVCONT = False
-ALL_CHANNELS_IPSVCONT = True
-LR_vs_LVminusRV = True
+ALL_CHANNELS_IPSVCONT = False
+LR_vs_LVminusRV = False
 GRAND_AVG_RIGHT_SPKR = False
 
 if GRAND_AVG_ABR_PLOT:
@@ -344,8 +341,8 @@ if GRAND_AVG_ABR_PLOT:
     f.text(0.6, 0.85, 'Right speaker', fontsize=15)
     # Save figure
     savename = 'GRAND_AVG_ABR_PLOT'
-    f.savefig(os.path.join(cohort_pickle_directory, savename + '.svg'))
-    f.savefig(os.path.join(cohort_pickle_directory, savename + '.png'), dpi=300)
+    f.savefig(os.path.join(output_directory, savename + '.svg'))
+    f.savefig(os.path.join(output_directory, savename + '.png'), dpi=300)
 
 if GRAND_AVG_IMSHOW:
     f, axa = plt.subplots(3, 2, sharex=True, sharey=True)
@@ -388,8 +385,8 @@ if GRAND_AVG_IMSHOW:
     f.text(0.6, 0.88, 'Right speaker', fontsize=15)
     # Save figure
     savename = 'GRAND_AVG_IMSHOW'
-    f.savefig(os.path.join(cohort_pickle_directory, savename + '.svg'))
-    f.savefig(os.path.join(cohort_pickle_directory, savename + '.png'), dpi=300)
+    f.savefig(os.path.join(output_directory, savename + '.svg'))
+    f.savefig(os.path.join(output_directory, savename + '.png'), dpi=300)
 
 if GRAND_AVG_IPSVCONT:
     # Get only the loudest sounds
@@ -421,8 +418,8 @@ if GRAND_AVG_IPSVCONT:
     ax.set_xlabel('time (ms)', fontsize=12)
     # Save figure
     savename = 'GRAND_AVG_IPSVCONT'
-    f.savefig(os.path.join(cohort_pickle_directory, savename + '.svg'))
-    f.savefig(os.path.join(cohort_pickle_directory, savename + '.png'), dpi=300)
+    f.savefig(os.path.join(output_directory, savename + '.svg'))
+    f.savefig(os.path.join(output_directory, savename + '.png'), dpi=300)
 
 if GRAND_AVG_RIGHT_SPKR:
     # Get only the loudest sounds
@@ -454,8 +451,8 @@ if GRAND_AVG_RIGHT_SPKR:
     ax.set_xlabel('time (ms)', fontsize=12)
     # Save figure
     savename = 'GRAND_AVG_RIGHT_SPKR'
-    f.savefig(os.path.join(cohort_pickle_directory, savename + '.svg'))
-    f.savefig(os.path.join(cohort_pickle_directory, savename + '.png'), dpi=300)
+    f.savefig(os.path.join(output_directory, savename + '.svg'))
+    f.savefig(os.path.join(output_directory, savename + '.png'), dpi=300)
 
 if ALL_CHANNELS_IPSVCONT:
     # Get only the loudest sounds
@@ -495,8 +492,8 @@ if ALL_CHANNELS_IPSVCONT:
     ax.set_xlabel('time (ms)', fontsize=12)
     # Save figure
     savename = 'ALL_CHANNELS_IPSVCONT'
-    f.savefig(os.path.join(cohort_pickle_directory, savename + '.svg'))
-    f.savefig(os.path.join(cohort_pickle_directory, savename + '.png'), dpi=300)
+    f.savefig(os.path.join(output_directory, savename + '.svg'))
+    f.savefig(os.path.join(output_directory, savename + '.png'), dpi=300)
 if LR_vs_LVminusRV:
     LVsRV_Right = (loud_laterality.loc['LV','R','contralateral']-
                    loud_laterality.loc['RV','R','ipsilateral'])
@@ -509,5 +506,5 @@ if LR_vs_LVminusRV:
     ax.plot(t, loud_laterality.loc['LR', 'R', :].T*-1e6, ls ='--', color='blue', label='LR Right')
     fig.legend()
     savename = 'LR_vs_LVminusRV'
-    f.savefig(os.path.join(cohort_pickle_directory, savename + '.svg'))
-    f.savefig(os.path.join(cohort_pickle_directory, savename + '.png'), dpi=300)
+    f.savefig(os.path.join(output_directory, savename + '.svg'))
+    f.savefig(os.path.join(output_directory, savename + '.png'), dpi=300)
