@@ -32,7 +32,7 @@ if not os.path.exists(output_directory):
 
 ## Load notes about the cohort
 # Columns: date, mouse, sex, strain, genotype, DOB, HL
-cohort_experiments = pandas.read_csv('mouse_info.csv')
+cohort_experiments = pandas.read_csv('250630_cohort_mouse_info.csv')
 cohort_mice = cohort_experiments['mouse'].unique()
 
 # Turn the dates into actual datetime dates
@@ -119,28 +119,7 @@ recording_metadata['include'] = recording_metadata['include'].fillna(True)
 recording_metadata = recording_metadata.reindex(columns=['ch0_config', 'ch2_config', 'ch4_config', 'speaker_side',
         'amplitude', 'include', 'notes', 'recording_name', 'datafile'])
 
-print('Cohort metadata loaded. Checking that each recording can be loaded...')
-#~ ## Ensure binary data can be loaded for each recording
-#~ for recording in tqdm.tqdm( recording_metadata.index):
-    #~ i_metadata = recording_metadata.loc[recording]
-    #~ # Continue if 'include' is already False
-    #~ if i_metadata['include'] == False:
-        #~ continue
-    #~ # Get the filename
-    #~ recording_folder = os.path.join(i_metadata['datafile'])
-    #~ # Check if data can be loaded
-    #~ try:
-        #~ # Load raw data in volts
-        #~ data = abr.loading.load_recording(recording_folder)
-    #~ except IOError as e:
-        #~ # If not, mark 'include' as False
-        #~ print(f'cannot load data from {i_metadata['datafile']}, marking to exclude')
-        #~ print(e)
-        #~ recording_metadata.loc[recording, 'include'] = False
-
 
 ## Store
 cohort_experiments.to_pickle(os.path.join(output_directory, 'cohort_experiments'))
 recording_metadata.to_pickle(os.path.join(output_directory, 'recording_metadata'))
-
-print('Done')
