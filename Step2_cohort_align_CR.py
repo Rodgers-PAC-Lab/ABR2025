@@ -1,5 +1,8 @@
-# This script identifies and categorizes clicks and error-checks them
-# Looks like it also extracts ABR around those clicks
+# This script identifies and categorizes clicks and error-checks them,
+# which is fairly slow. 
+#
+# Looks like it also extracts ABR around those clicks, and then also 
+# calculates thresholds (TODO: break this into its own script)
 #
 # Writes out the following in the output directory
 #   big_triggered_ad - audio data triggered on clicks
@@ -19,8 +22,6 @@ from paclab import abr
 import my.plot
 import matplotlib.pyplot as plt
 import tqdm
-
-plt.ion()
 
 
 ## Params
