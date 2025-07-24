@@ -1,4 +1,7 @@
 ## This directory analyzes all data from 241126_cohort ABR
+# Rowan: What does this script do? It doesn't save date. Many plots seem out
+# of date. -CR
+#
 # This script pulls out neural responses around clicks
 # Quantifies correlation in between-ears recordings
 # Quantifies threshold
@@ -24,14 +27,12 @@ import matplotlib
 import scipy.signal
 import numpy as np
 import matplotlib
-matplotlib.use('TkAgg')
 import pandas
 import paclab.abr
 import paclab.abr.abr_plotting
 import my.plot
 import matplotlib.pyplot as plt
 
-plt.ion()
 my.plot.font_embed()
 
 def pre_or_post(timepoint):
@@ -75,8 +76,6 @@ bilateral_mouse_l = ['Cat_226', 'Cat_229']
 pre_times_l = ['apreA','apreB']
 post_times_l = ['postA','postB']
 
-## Cohort Analysis' Information
-cohort_name = '250630_cohort'
 
 ## Paths
 with open('filepaths.json') as fi:
@@ -86,36 +85,31 @@ with open('filepaths.json') as fi:
 raw_data_directory = paths['raw_data_directory']
 output_directory = paths['output_directory']
 
-# Use cohort pickle directory
-cohort_pickle_directory = os.path.join(output_directory, cohort_name)
-if not os.path.exists(cohort_pickle_directory):
-    try:
-        os.mkdir(cohort_pickle_directory)
-    except:
-        print("No pickle directory exists and this script doesn't have permission to create one.")
-        print("Check your Pickle_directory file path.")
 
 ## Load results of Step1
 cohort_experiments = pandas.read_pickle(
-    os.path.join(cohort_pickle_directory, 'cohort_experiments'))
+    os.path.join(output_directory, 'cohort_experiments'))
 recording_metadata = pandas.read_pickle(
-    os.path.join(cohort_pickle_directory, 'recording_metadata'))
+    os.path.join(output_directory, 'recording_metadata'))
+
 # Fillna
 cohort_experiments['HL'] = cohort_experiments['HL'].fillna('none')
 
 # Drop those with 'include' == False
 recording_metadata = recording_metadata[recording_metadata['include'] == True]
 
+
 ## Load results of Step2
 big_triggered_neural = pandas.read_pickle(
-    os.path.join(cohort_pickle_directory, 'big_triggered_neural'))
+    os.path.join(output_directory, 'big_triggered_neural'))
 big_abrs = pandas.read_pickle(
-    os.path.join(cohort_pickle_directory,'big_abrs'))
+    os.path.join(output_directory,'big_abrs'))
 threshold_db = pandas.read_pickle(
-    os.path.join(cohort_pickle_directory,'thresholds'))
+    os.path.join(output_directory,'thresholds'))
 
 # Average ABRs across recordings
 avged_abrs = big_abrs.groupby(['date', 'mouse', 'channel', 'speaker_side','label']).mean()
+
 
 ## Calculate the stdev(ABR) as a function of level
 # window=20 (1.25 ms) seems the best compromise between smoothing the whole
@@ -302,7 +296,7 @@ PLOT_ABR_POWER_POSTHL_SHIFTED = False
 PLOT_ABR_LR_PREHL_BY_HL = False
 PLOT_ABR_LR_POSTHL_BY_HL = False
 
-PLOT_LR_IPSVCONT = True
+PLOT_LR_IPSVCONT = False
 PLOT_ABR_PRE_V_POST_BY_HL = False
 IMSHOW_PRE_V_POST_BY_HL = False
 PLOT_ABR_POWER_PRE_V_POST = False
@@ -310,6 +304,9 @@ PLOT_ABR_POWER_PRE_V_POST = False
 # Turns out all the plots in this have been carried over since like February and are not up to date or helpful
 # Starting fresh here
 if IMSHOW_COMPARE_DAYS:
+    ## Plot the ABR for every config, date tested, and mouse
+    # Each mouse is a figure, configs are rows, and dates arr columns
+    
     # Get time in ms
     t = avged_abrs.columns / sampling_rate * 1000
     # Iterate over mice
@@ -389,10 +386,13 @@ if IMSHOW_COMPARE_DAYS:
             f.colorbar(config,ax=axa[:,-1])
         # Savefig
         savename = f'COMPARE_DAYS_{mouse}_IMSHOW'
-        f.savefig(os.path.join(cohort_pickle_directory, savename + '.svg'))
-        f.savefig(os.path.join(cohort_pickle_directory, savename + '.png'), dpi=300)
+        f.savefig(os.path.join(output_directory, savename + '.svg'))
+        f.savefig(os.path.join(output_directory, savename + '.png'), dpi=300)
 
 if PLOT_ABR_COMPARE_DAYS:
+    ## Just like IMSHOW_COMPARE_DAYS, but as a multi-line plot
+    # TODO: combine with IMSHOW_COMPARE_DAYS
+    
     # Get list of mice
 
     # Get time in ms
@@ -451,7 +451,7 @@ if PLOT_ABR_COMPARE_DAYS:
                     ax.set_xlabel('time (ms)')
             # Plot
             # Make colorbar
-            aut_colorbar = abr.abr_plotting.generate_colorbar(
+            aut_colorbar = paclab.abr.abr_plotting.generate_colorbar(
                 len(subdf.index), mapname='inferno_r', start=0.12, stop=1)
             color_df = pandas.DataFrame(aut_colorbar,
                                         index=subdf.index.sort_values(ascending=True))
@@ -491,10 +491,13 @@ if PLOT_ABR_COMPARE_DAYS:
                           labelspacing=1, title='Sound (dB)')
         # Savefig
         savename = f'COMPARE_DAYS_{mouse}_PLOT_ABR'
-        f.savefig(os.path.join(cohort_pickle_directory, savename + '.svg'))
-        f.savefig(os.path.join(cohort_pickle_directory, savename + '.png'), dpi=300)
+        f.savefig(os.path.join(output_directory, savename + '.svg'))
+        f.savefig(os.path.join(output_directory, savename + '.png'), dpi=300)
 
 if ABR_POWER_VS_LEVEL_MOUSE_COMPARE_DAYS:
+    ## Plot ABR power vs sound level, for every config, date, and mouse
+    # Each mouse is a figure, each config is a row, each date is a column
+    
     # Get time in ms
     t = big_abrs.columns / sampling_rate * 1000
     for mouse in mouse_l:
@@ -573,11 +576,13 @@ if ABR_POWER_VS_LEVEL_MOUSE_COMPARE_DAYS:
 
         # Savefig
         savename = f'COMPARE_DAYS_{mouse}_ABR_POWER_VS_LEVEL'
-        f.savefig(os.path.join(cohort_pickle_directory, savename + '.svg'))
-        f.savefig(os.path.join(cohort_pickle_directory,savename + '.png'), dpi=300)
+        f.savefig(os.path.join(output_directory, savename + '.svg'))
+        f.savefig(os.path.join(output_directory,savename + '.png'), dpi=300)
         # plt.close(f)
 
 if IMSHOW_ABRS:
+    ## This is a confusing plot and I think we should get rid of it -CR
+    
     mouse_l = sorted(big_abrs.index.get_level_values('mouse').unique())[::-1]
     channel_l = sorted(big_abrs.index.get_level_values('channel').unique())
     speaker_side_l = sorted(big_abrs.index.get_level_values('speaker_side').unique())
@@ -630,11 +635,13 @@ if IMSHOW_ABRS:
 
     # Harmonize
     my.plot.harmonize_clim_in_subplots(fig=f, center_clim=True, trim=.999)
-    savename = os.path.join(cohort_pickle_directory, (cohort_name + '_IMSHOW_ABRS'))
+    savename = os.path.join(output_directory, 'IMSHOW_ABRS')
     f.savefig((savename + '.png'), dpi=300)
     f.savefig((savename + '.svg'))
 
 if PLOT_ABR_POWER_VS_LEVEL_ALL_MICE:
+    ## This plot fails to run -CR
+    
     # Compare mice averaged pre v post-HL.
     # Get time in ms
     t = big_abrs.columns / sampling_rate * 1000
@@ -684,8 +691,8 @@ if PLOT_ABR_POWER_VS_LEVEL_ALL_MICE:
     axa.flatten()[0].legend(loc='upper right', bbox_to_anchor=(5.05, -2))
     # Savefig
     savename = 'ABR_POWER_VS_LEVEL_ALL_MICE'
-    f.savefig(os.path.join(cohort_pickle_directory, savename + '.svg'))
-    f.savefig(os.path.join(cohort_pickle_directory, savename + '.png'), dpi=300)
+    f.savefig(os.path.join(output_directory, savename + '.svg'))
+    f.savefig(os.path.join(output_directory, savename + '.png'), dpi=300)
 
 if PLOT_ABR_POWER_POSTHL_SHIFTED:
     post_evoked_rms = evoked_rms_timepoint.loc[:,['postA','postB'],:]
@@ -738,8 +745,8 @@ if PLOT_ABR_POWER_POSTHL_SHIFTED:
     axa.flatten()[0].legend(loc='upper right', bbox_to_anchor=(2.45, -1))
     # Savefig
     savename = 'ABR_POWER_POSTHL_SHIFTED'
-    f.savefig(os.path.join(cohort_pickle_directory, savename + '.svg'))
-    f.savefig(os.path.join(cohort_pickle_directory, savename + '.png'), dpi=300)
+    f.savefig(os.path.join(output_directory, savename + '.svg'))
+    f.savefig(os.path.join(output_directory, savename + '.png'), dpi=300)
 
 if PLOT_ABR_LR_PREHL_BY_HL:
     f,axa = plt.subplots(2,2, sharex=True, sharey=True)
@@ -775,8 +782,8 @@ if PLOT_ABR_LR_PREHL_BY_HL:
     f.text(0.69, 0.85, 'Sham', fontsize=15)
     # Save figure
     savename = 'PLOT_ABR_LR_PREHL_BY_HL'
-    f.savefig(os.path.join(cohort_pickle_directory, savename + '.svg'))
-    f.savefig(os.path.join(cohort_pickle_directory, savename + '.png'), dpi=300)
+    f.savefig(os.path.join(output_directory, savename + '.svg'))
+    f.savefig(os.path.join(output_directory, savename + '.png'), dpi=300)
 
 if PLOT_ABR_LR_POSTHL_BY_HL:
     f,axa = plt.subplots(2,2, sharex=True, sharey=True)
@@ -813,8 +820,8 @@ if PLOT_ABR_LR_POSTHL_BY_HL:
     f.text(0.69, 0.85, 'Sham', fontsize=15)
     # Save figure
     savename = 'PLOT_ABR_LR_POSTHL_BY_HL'
-    f.savefig(os.path.join(cohort_pickle_directory, savename + '.svg'))
-    f.savefig(os.path.join(cohort_pickle_directory, savename + '.png'), dpi=300)
+    f.savefig(os.path.join(output_directory, savename + '.svg'))
+    f.savefig(os.path.join(output_directory, savename + '.png'), dpi=300)
 
 if PLOT_ABR_PRE_V_POST_BY_HL:
     f,axa = plt.subplots(6,4, sharex=True, sharey=True,
@@ -869,8 +876,8 @@ if PLOT_ABR_PRE_V_POST_BY_HL:
 
     # Savefig
     savename = 'PRE_V_POST_PLOT_ABR_BY_HL'
-    f.savefig(os.path.join(cohort_pickle_directory, savename + '.svg'))
-    f.savefig(os.path.join(cohort_pickle_directory, savename + '.png'), dpi=300)
+    f.savefig(os.path.join(output_directory, savename + '.svg'))
+    f.savefig(os.path.join(output_directory, savename + '.png'), dpi=300)
 
 if IMSHOW_PRE_V_POST_BY_HL:
     f,axa = plt.subplots(6,4, sharex=True, sharey=True,
@@ -927,8 +934,8 @@ if IMSHOW_PRE_V_POST_BY_HL:
 
     # Savefig
     savename = 'PRE_V_POST_IMSHOW_BY_HL'
-    f.savefig(os.path.join(cohort_pickle_directory, savename + '.svg'))
-    f.savefig(os.path.join(cohort_pickle_directory, savename + '.png'), dpi=300)
+    f.savefig(os.path.join(output_directory, savename + '.svg'))
+    f.savefig(os.path.join(output_directory, savename + '.png'), dpi=300)
 
 if PLOT_ABR_POWER_PRE_V_POST:
     # Compare mice averaged pre v post-HL.
@@ -977,8 +984,8 @@ if PLOT_ABR_POWER_PRE_V_POST:
     axa[3, 1].legend(loc='upper right', bbox_to_anchor=(1.53, 1))
     # Savefig
     savename = 'PRE_V_POST_PLOT_ABR'
-    f.savefig(os.path.join(cohort_pickle_directory, savename + '.svg'))
-    f.savefig(os.path.join(cohort_pickle_directory, savename + '.png'), dpi=300)
+    f.savefig(os.path.join(output_directory, savename + '.svg'))
+    f.savefig(os.path.join(output_directory, savename + '.png'), dpi=300)
 
 if PLOT_LR_IPSVCONT:
     LR_loud_avgs = LR_loud.groupby('speaker_side').mean()
@@ -991,5 +998,5 @@ if PLOT_LR_IPSVCONT:
     f.legend()
     f.suptitle('Ipsi vs contra for LR recordings')
     savename = 'LR_ipsvcont'
-    f.savefig(os.path.join(cohort_pickle_directory, savename + '.svg'))
-    f.savefig(os.path.join(cohort_pickle_directory, savename + '.png'), dpi=300)
+    f.savefig(os.path.join(output_directory, savename + '.svg'))
+    f.savefig(os.path.join(output_directory, savename + '.png'), dpi=300)
