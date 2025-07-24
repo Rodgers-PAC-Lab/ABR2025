@@ -1,3 +1,9 @@
+## Write out correlations
+# Writes out
+# - wthn_mouse_R2
+# - btwn_mouse_R2
+# - wthn_mouse_R2_all_sound
+
 import os
 import datetime
 import glob
@@ -72,39 +78,31 @@ def flatten_across_sounds_or_time(big_abrs,time_ilocs='None',
     flattened_df = flattened_df.set_index(col_names)
     return flattened_df
 
-plt.ion()
+
 
 ## Params
 sampling_rate = 16000  # TODO: store in recording_metadata
 my.plot.manuscript_defaults()
 my.plot.font_embed()
 
-## Cohort Analysis' Information
-datestring = '250630'
-day_directory = "_cohort"
 loudest_dB = 91
 
+
 ## Paths
-GUIdata_directory, Pickle_directory = (paclab.abr.loading.get_ABR_data_paths())
-cohort_name = datestring + day_directory
-# Use cohort pickle directory
-cohort_pickle_directory = os.path.join(Pickle_directory, cohort_name)
-if not os.path.exists(cohort_pickle_directory):
-    try:
-        os.mkdir(cohort_pickle_directory)
-    except:
-        print("No pickle directory exists and this script doesn't have permission to create one.")
-        print("Check your Pickle_directory file path.")
-# Put click figures here
-click_data_dir = os.path.join(cohort_pickle_directory, 'click_validation')
-if not os.path.exists(click_data_dir):
-    os.mkdir(click_data_dir)
+# Load the required file filepaths.json (see README)
+with open('filepaths.json') as fi:
+    paths = json.load(fi)
+
+# Parse into paths to raw data and output directory
+raw_data_directory = paths['raw_data_directory']
+output_directory = paths['output_directory']
+
 
 ## Load results of Step1-3
-cohort_experiments = pandas.read_pickle(os.path.join(cohort_pickle_directory, 'cohort_experiments'))
-recording_metadata = pandas.read_pickle(os.path.join(cohort_pickle_directory, 'recording_metadata'))
-big_abrs = pandas.read_pickle(os.path.join(cohort_pickle_directory, 'big_abrs'))
-big_triggered_neural = pandas.read_pickle(os.path.join(cohort_pickle_directory, 'big_triggered_neural'))
+cohort_experiments = pandas.read_pickle(os.path.join(output_directory, 'cohort_experiments'))
+recording_metadata = pandas.read_pickle(os.path.join(output_directory, 'recording_metadata'))
+big_abrs = pandas.read_pickle(os.path.join(output_directory, 'big_abrs'))
+big_triggered_neural = pandas.read_pickle(os.path.join(output_directory, 'big_triggered_neural'))
 
 # Drop those with 'include' == False
 recording_metadata = recording_metadata[recording_metadata['include'] == True]
@@ -186,7 +184,7 @@ for mouse in repeated_mouse_l:
         correl_df = pandas.DataFrame(correl_d)
         dicts_l.append(correl_df)
 wthn_mouse_R2 = pandas.concat(dicts_l)
-wthn_mouse_R2.to_pickle(os.path.join(cohort_pickle_directory, 'wthn_mouse_R2'))
+wthn_mouse_R2.to_pickle(os.path.join(output_directory, 'wthn_mouse_R2'))
 
 
 # Now get the between-mouse correlations from pre-HL days.
@@ -221,7 +219,7 @@ for (timepoint, channel,speaker_side),subdf in gobj:
     correl_df = pandas.DataFrame(correl_d)
     dicts_l.append(correl_df)
 btwn_mouse_R2 = pandas.concat(dicts_l)
-btwn_mouse_R2.to_pickle(os.path.join(cohort_pickle_directory, 'btwn_mouse_R2'))
+btwn_mouse_R2.to_pickle(os.path.join(output_directory, 'btwn_mouse_R2'))
 
 
 # Get correlation within-mouse across timepoints WITHOUT flattening it by sound level
@@ -254,4 +252,4 @@ for mouse in repeated_mouse_l:
         correl_df = pandas.DataFrame(correl_d)
         dicts_l.append(correl_df)
 wthn_mouse_R2_all_sound = pandas.concat(dicts_l)
-wthn_mouse_R2_all_sound.to_pickle(os.path.join(cohort_pickle_directory, 'wthn_mouse_R2_all_sound'))
+wthn_mouse_R2_all_sound.to_pickle(os.path.join(output_directory, 'wthn_mouse_R2_all_sound'))
