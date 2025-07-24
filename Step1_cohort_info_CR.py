@@ -43,7 +43,7 @@ cohort_experiments['DOB'] = cohort_experiments['DOB'].apply(
 
 # Calculate age on the day of the experiment
 cohort_experiments.insert(5,'age',
-                (cohort_experiments['date']-cohort_experiments['DOB']).values)
+    (cohort_experiments['date']-cohort_experiments['DOB']).values)
 cohort_experiments['age'] = cohort_experiments['age'].apply(lambda x: x.days)
 
 
@@ -65,24 +65,29 @@ for i_day in cohort_experiments['date'].unique():
     print(i_day)
     # Form the folder name for the daily recording folder
     folder_datestr = datetime.datetime.strftime(i_day, '%Y-%m-%d')
-    day_metadata = cohort_experiments.loc[cohort_experiments['date']==i_day]
+    day_metadata = cohort_experiments.loc[cohort_experiments['date'] == i_day]
+
     # We shouldn't have any mice run twice in one day
     assert len(day_metadata['mouse'].unique()) == len(day_metadata)
     day_mouses = day_metadata['mouse'].unique()
     day_metadata = day_metadata.set_index('mouse')
+
     # Most of the time, it'll be the same experimenter on the same day.
     # Then we can just load that metadata csv once instead of per-mouse.
     if len(day_metadata['experimenter'].unique()) == 1:
         # We ABSOLUTELY should not have a case where the same experimenter, same day,
         # is using two different versions of metadata
-        assert len(day_metadata['metadata_version'].unique())==1
+        assert len(day_metadata['metadata_version'].unique()) == 1
 
         experimenter = day_metadata['experimenter'].unique()[0]
         metadata_version = day_metadata['metadata_version'].unique()[0]
+
         # Form data_directory where both the notes csv and recording data are stored
         data_directory = os.path.join(raw_data_directory, folder_datestr, experimenter)
+
         # Load metadata for the day
         day_notes = abr.loading.get_metadata(data_directory, i_day.strftime('%y%m%d'), metadata_version)
+
         # Remove mice that aren't in the cohort
         day_notes = day_notes.loc[day_notes['mouse'].isin(day_mouses)]
 
@@ -97,13 +102,17 @@ for i_day in cohort_experiments['date'].unique():
         for mouse in day_metadata.index:
             experimenter = day_metadata.loc[mouse]['experimenter']
             metadata_version = day_metadata.loc[mouse]['metadata_version']
+
             # Form data_directory where both the notes csv and recording data are stored
             data_directory = os.path.join(raw_data_directory, folder_datestr, experimenter)
+
             # Load metadata for the day
             day_notes = abr.loading.get_metadata(data_directory, i_day.strftime('%y%m%d'), metadata_version)
-            mouse_notes = day_notes.loc[day_notes['mouse']==mouse]
+            mouse_notes = day_notes.loc[day_notes['mouse'] == mouse]
             mouse_notes_l.append(mouse_notes)
+        # Concat results of the for loop
         day_notes = pandas.concat(mouse_notes_l)
+
         # Insert date
         day_notes['date'] = i_day
         day_notes = day_notes.reset_index().set_index(['date', 'mouse', 'recording'])

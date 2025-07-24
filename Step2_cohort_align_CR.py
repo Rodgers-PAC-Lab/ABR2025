@@ -205,11 +205,6 @@ big_click_params = pandas.concat(
     ).set_index('t_samples', append=True).droplevel(None).sort_index()
 
 
-## Store
-big_triggered_ad.to_pickle(os.path.join(output_directory, 'big_triggered_ad'))
-big_triggered_neural.to_pickle(os.path.join(output_directory, 'big_triggered_neural'))
-big_click_params.to_pickle(os.path.join(output_directory, 'big_click_params'))
-
 ## Remove outliers, aggregate, and average ABRs
 
 # Count the number of trials in each experiment
@@ -304,14 +299,6 @@ big_abr_baseline_rms = big_abr_baseline_rms.median(axis=1)
 # with level, but the variability in log-units is consistent over level.
 big_abr_evoked_rms = big_abr_stds.loc[:, 34].unstack('label')
 
-# Get the peak
-# The peak is generally around sample 35, 25, 45-50, or more rarely 75
-# But anything is possible
-# Rather than be too strict, I'll just allow anything after the initial click,
-# although this will generally be noise for the softest condition
-# In the end the plots look almost identical with _peak or _rms
-big_abr_evoked_peak = big_abrs.loc[:, 10:].abs().max(axis=1).unstack('label')
-
 # Determine threshold crossing as 3*baseline. Note: more averaging will
 # decrease baseline and therefore threshold, as will better noise levels.
 # But this still seems better than a fixed threshold in microvolts.
@@ -330,5 +317,8 @@ threshold_db = pandas.DataFrame(threshold_db, columns=['threshold'])
 
 
 ## Store
+big_triggered_ad.to_pickle(os.path.join(output_directory, 'big_triggered_ad'))
+big_triggered_neural.to_pickle(os.path.join(output_directory, 'big_triggered_neural'))
+big_click_params.to_pickle(os.path.join(output_directory, 'big_click_params'))
 big_abrs.to_pickle(os.path.join(output_directory, 'big_abrs'))
 threshold_db.to_pickle(os.path.join(output_directory, 'thresholds'))
