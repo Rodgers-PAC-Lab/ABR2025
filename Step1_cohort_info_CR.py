@@ -9,8 +9,9 @@
 # so experiments are mixed together. This script will split them apart.
 #
 # At the end of the script it creates these pickles:
-#   recording_metadata: all the recording metadata from all dates and mice
-#   cohort_experiments: mouse_info.csv with proper formats and with age computed
+#   mouse_metadata : one row per mouse
+#   experiment_metadata : one row per experiment (mouse * date)
+#   recording_metadata: one row per recording, indexed by date * mouse * recording
 
 import os
 import datetime
@@ -37,102 +38,163 @@ if not os.path.exists(output_directory):
     os.mkdir(output_directory)
 
 
-## Load notes about the cohort
-# Columns: date, mouse, sex, strain, genotype, DOB, HL
-cohort_experiments = pandas.read_csv('250630_cohort_mouse_info.csv')
-cohort_mice = cohort_experiments['mouse'].unique()
+## Params
+# In this dataset, all clicks should have this amplitude
+expected_amplitude = [
+    0.01,  0.0063,  0.004, 0.0025, 0.0016, 0.001, 0.00063, 
+    0.0004, 0.00025, 0.00016, 0.0001, 6.3e-05, 4e-05,
+    ]
+
+
+## Load mouse metadata
+# The source data is in the lab google drive -- download to CSVs here
+# The mice in the dataset
+mouse_metadata = pandas.read_csv(
+    '2025-07-25 ABR paper metadata - mouse metadata.csv')
+
+# The experiments in the dataset
+experiment_metadata = pandas.read_csv(
+    '2025-07-25 ABR paper metadata - experiment metadata.csv')
+
+# Error check for duplicates
+assert not mouse_metadata.duplicated().any()
+assert not experiment_metadata.duplicated().any()
+
+# Presently, all experiments were done by 'rowan'
+experiment_metadata['experimenter'] = 'rowan'
 
 # Turn the dates into actual datetime dates
-cohort_experiments['date'] = cohort_experiments['date'].apply(
-    lambda x: datetime.datetime.strptime(x,'%Y-%m-%d').date())
-cohort_experiments['DOB'] = cohort_experiments['DOB'].apply(
-    lambda x: datetime.datetime.strptime(x,'%Y-%m-%d').date())
+experiment_metadata['date'] = experiment_metadata['date'].apply(
+    lambda x: datetime.datetime.strptime(x, '%Y-%m-%d').date())
+mouse_metadata['DOB'] = mouse_metadata['DOB'].apply(
+    lambda x: datetime.datetime.strptime(x, '%Y-%m-%d').date())
+
+# Special case this one because it can be null
+mouse_metadata['HL_date'] = mouse_metadata['HL_date'].apply(
+    lambda x: None if pandas.isnull(x) else 
+    datetime.datetime.strptime(x, '%Y-%m-%d').date())
 
 # Calculate age on the day of the experiment
-cohort_experiments.insert(5,'age',
-    (cohort_experiments['date']-cohort_experiments['DOB']).values)
-cohort_experiments['age'] = cohort_experiments['age'].apply(lambda x: x.days)
+experiment_metadata = experiment_metadata.join(
+    mouse_metadata.set_index('mouse')['DOB'], on='mouse')
+experiment_metadata['age'] = (
+    experiment_metadata['date'] - experiment_metadata['DOB']
+    ).apply(lambda x: x.days)
+experiment_metadata = experiment_metadata.drop('DOB', axis=1)
+
+# Calculate whether each experiment was before or after hearing loss
+experiment_metadata = experiment_metadata.join(
+    mouse_metadata.set_index('mouse')['HL_date'], on='mouse')
+experiment_metadata['after_HL'] = (
+    experiment_metadata['date'] > experiment_metadata['HL_date']
+    )
+experiment_metadata = experiment_metadata.drop('HL_date', axis=1)
 
 
-## Load metadata from each session
-# For every day, there is a _notes_v5.csv file in the GUI data directory, and
+## Number the sessions within for each group of mouse * after_HL
+# This will define n_experiment as {0, 1, ...} before hearing loss and
+# (if applicable) {0, 1, ...} after hearing loss
+
+# Sort by date
+experiment_metadata = experiment_metadata.sort_values('date')
+
+# Group
+gobj = experiment_metadata.groupby(['mouse', 'after_HL'])
+
+# Number sessions within each group
+subdf_l = []
+for (mouse, after_HL), subdf in gobj:
+    subdf['n_experiment'] = range(len(subdf))
+    
+    # Store
+    subdf_l.append(subdf)
+
+# Concat
+experiment_metadata = pandas.concat(subdf_l).sort_index()
+
+
+## Load metadata from each recording
+# For every day, there is a _notes_v6.csv file in the GUI data directory, and
 # that csv file labels the mouse for every recording on that day
-#
-# Here, we loop over the experiments (e.g., mouse * day), and get the metadata
-# for each recording on that experiment
-day_notes_l = []
-for i_day in cohort_experiments['date'].unique():
-    print(i_day)
-    # Form the folder name for the daily recording folder
-    folder_datestr = datetime.datetime.strftime(i_day, '%Y-%m-%d')
-    day_metadata = cohort_experiments.loc[cohort_experiments['date'] == i_day]
+# Here, we loop over the experiments (e.g., experimenter * mouse * day), 
+# and get the metadata for each recording on that experiment
+# Load data from every date that is included
+recording_metadata_l = []
 
-    # We shouldn't have any mice run twice in one day
-    assert len(day_metadata['mouse'].unique()) == len(day_metadata)
-    day_mouses = day_metadata['mouse'].unique()
-    day_metadata = day_metadata.set_index('mouse')
+for idx in experiment_metadata.index:
+    # Get the experimenter, date, and mouse
+    experimenter, experiment_date, mouse = experiment_metadata.loc[
+        idx, ['experimenter', 'date', 'mouse']]
 
-    # Most of the time, it'll be the same experimenter on the same day.
-    # Then we can just load that metadata csv once instead of per-mouse.
-    if len(day_metadata['experimenter'].unique()) == 1:
-        # We ABSOLUTELY should not have a case where the same experimenter, same day,
-        # is using two different versions of metadata
-        assert len(day_metadata['metadata_version'].unique()) == 1
+    # Form data_directory where both the notes csv and recording data are stored
+    folder_datestr = datetime.datetime.strftime(experiment_date, '%Y-%m-%d')
+    data_directory = os.path.join(
+        raw_data_directory, folder_datestr, experimenter)
+    
+    # Load metadata for the day
+    this_date_metadata = abr.loading.get_metadata(
+        data_directory, experiment_date.strftime('%y%m%d'), 'v6')
+    
+    # Include only data from this mouse
+    this_date_metadata = this_date_metadata[
+        this_date_metadata['mouse'] == mouse]
+    
+    # Insert date
+    this_date_metadata['date'] = experiment_date
+    
+    # Drop datafile, which contains the full path, which can differ based
+    # on user and filesystem
+    this_date_metadata = this_date_metadata.drop('datafile', axis=1)
+    
+    # Replace datafile with a relative path within raw_data_directory
+    def recording_name2short_datafile(recording_name):
+        """Turn bare recording name into a path within raw_data_directory.
+        
+        Join folder_datestr and experimenter before recording_name        
+        """
+        return os.path.join(folder_datestr, experimenter, recording_name)
 
-        experimenter = day_metadata['experimenter'].unique()[0]
-        metadata_version = day_metadata['metadata_version'].unique()[0]
+    this_date_metadata['short_datafile'] = this_date_metadata[
+        'recording_name'].apply(recording_name2short_datafile)
+    
+    # Reindex
+    this_date_metadata = this_date_metadata.set_index(
+        ['date', 'mouse', 'recording'])    
 
-        # Form data_directory where both the notes csv and recording data are stored
-        data_directory = os.path.join(raw_data_directory, folder_datestr, experimenter)
-
-        # Load metadata for the day
-        day_notes = abr.loading.get_metadata(data_directory, i_day.strftime('%y%m%d'), metadata_version)
-
-        # Remove mice that aren't in the cohort
-        day_notes = day_notes.loc[day_notes['mouse'].isin(day_mouses)]
-
-        # Insert date
-        day_notes['date'] = i_day
-        day_notes = day_notes.reset_index().set_index(['date', 'mouse', 'recording'])
-
-        day_notes_l.append(day_notes)
-    else:
-        # Loop through the day's mice and append their metadata to day_notes
-        mouse_notes_l = []
-        for mouse in day_metadata.index:
-            experimenter = day_metadata.loc[mouse]['experimenter']
-            metadata_version = day_metadata.loc[mouse]['metadata_version']
-
-            # Form data_directory where both the notes csv and recording data are stored
-            data_directory = os.path.join(raw_data_directory, folder_datestr, experimenter)
-
-            # Load metadata for the day
-            day_notes = abr.loading.get_metadata(data_directory, i_day.strftime('%y%m%d'), metadata_version)
-            mouse_notes = day_notes.loc[day_notes['mouse'] == mouse]
-            mouse_notes_l.append(mouse_notes)
-        # Concat results of the for loop
-        day_notes = pandas.concat(mouse_notes_l)
-
-        # Insert date
-        day_notes['date'] = i_day
-        day_notes = day_notes.reset_index().set_index(['date', 'mouse', 'recording'])
-        day_notes_l.append(day_notes)
-
+    # Store
+    recording_metadata_l.append(this_date_metadata)
 
 # Concat
 # Indexed by date * mouse * recording, with 1 row per recording
-recording_metadata = pandas.concat(day_notes_l)
+recording_metadata = pandas.concat(recording_metadata_l)
+
+
+## Include only some recordings
+# Default value for 'include' is True
 recording_metadata['include'] = recording_metadata['include'].fillna(True)
 
-# There's some recordings with v6 metadata which has an extra 'ch4_config' column
-# Re-order the columns so that's next to the other channel configs because it's annoying
-recording_metadata = recording_metadata.reindex(
-    columns=[
-    'ch0_config', 'ch2_config', 'ch4_config', 'speaker_side',
-    'amplitude', 'include', 'notes', 'recording_name', 'datafile',
-    ])
+# Drop those with 'include' == False
+recording_metadata = recording_metadata[recording_metadata['include'] == True]
+
+
+## Error check that amplitude is always the same
+for actual_amplitude in recording_metadata['amplitude'].values:
+    assert actual_amplitude == expected_amplitude
+
+# Drop
+recording_metadata = recording_metadata.drop('amplitude', axis=1)
+
+
+## Sort
+mouse_metadata = mouse_metadata.sort_index().sort_index(axis=1)
+experiment_metadata = experiment_metadata.sort_index().sort_index(axis=1)
+recording_metadata = recording_metadata.sort_index().sort_index(axis=1)
 
 
 ## Store
-cohort_experiments.to_pickle(os.path.join(output_directory, 'cohort_experiments'))
-recording_metadata.to_pickle(os.path.join(output_directory, 'recording_metadata'))
+mouse_metadata.to_pickle(
+    os.path.join(output_directory, 'mouse_metadata'))
+experiment_metadata.to_pickle(
+    os.path.join(output_directory, 'experiment_metadata'))
+recording_metadata.to_pickle(
+    os.path.join(output_directory, 'recording_metadata'))
