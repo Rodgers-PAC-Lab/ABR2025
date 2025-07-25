@@ -131,7 +131,7 @@ for idx in experiment_metadata.index:
     data_directory = os.path.join(
         raw_data_directory, folder_datestr, experimenter)
     
-    # Load metadata for the day
+    # Load metadata for the day (hardcoding v6)
     this_date_metadata = abr.loading.get_metadata(
         data_directory, experiment_date.strftime('%y%m%d'), 'v6')
     
