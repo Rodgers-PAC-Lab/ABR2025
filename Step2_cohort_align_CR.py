@@ -1,8 +1,5 @@
-# This script identifies and categorizes clicks and error-checks them,
-# which is fairly slow. 
-#
-# Looks like it also extracts ABR around those clicks, and then also 
-# calculates thresholds (TODO: break this into its own script)
+## Identify and categorize clicks, and slice neural and audio data around them
+# This script takes a while.
 #
 # Writes out the following in the output directory
 #   big_triggered_ad - audio data triggered on clicks
@@ -54,8 +51,10 @@ if not os.path.exists(click_data_dir):
 
 
 ## Load results of main1
-cohort_experiments = pandas.read_pickle(os.path.join(output_directory, 'cohort_experiments'))
-recording_metadata = pandas.read_pickle(os.path.join(output_directory, 'recording_metadata'))
+cohort_experiments = pandas.read_pickle(
+    os.path.join(output_directory, 'cohort_experiments'))
+recording_metadata = pandas.read_pickle(
+    os.path.join(output_directory, 'recording_metadata'))
 
 # Drop those with 'include' == False
 recording_metadata = recording_metadata[recording_metadata['include'] == True]
@@ -69,7 +68,6 @@ keys_l = []
 
 # Iterate over recordings
 for date, mouse, recording in tqdm.tqdm(recording_metadata.index):
-    # print((date, mouse, recording))
     
     # Get the recording info
     this_recording = recording_metadata.loc[date].loc[mouse].loc[recording]
@@ -79,9 +77,11 @@ for date, mouse, recording in tqdm.tqdm(recording_metadata.index):
     # Get the filename
     folder_datestr = datetime.datetime.strftime(date, '%Y-%m-%d')
     recording_folder = os.path.normpath(this_recording['datafile'])
+    
     # Load the data
     data = abr.loading.load_recording(recording_folder)
     data = data['data']
+    
     # Parse into neural and speaker data
     # Presently, neural data is always on channels 0, 2, and 4 at most (maybe fewer)
     speaker_signal_V = data[:, 7]
@@ -96,8 +96,10 @@ for date, mouse, recording in tqdm.tqdm(recording_metadata.index):
     # Generate labels .. convert voltage to dB and normalize to 70 dB, just 
     # to make it positive, this is not SPL
     amplitude_labels_old = np.rint(20 * log10_voltage + 70).astype(int)
+    
     # SPL as measured with the fancy microphone
-    amplitude_labels = np.array([49, 51, 54, 58, 61, 65, 69, 73, 77, 81, 85, 88, 91])
+    amplitude_labels = np.array(
+        [49, 51, 54, 58, 61, 65, 69, 73, 77, 81, 85, 88, 91])
 
     # Convert the voltages to cuts
     amplitude_cuts = (log10_voltage[1:] + log10_voltage[:-1]) / 2
@@ -206,3 +208,10 @@ big_click_params = pandas.concat(
     ).set_index('t_samples', append=True).droplevel(None).sort_index()
 
 
+## Store
+big_triggered_ad.to_pickle(
+    os.path.join(output_directory, 'big_triggered_ad'))
+big_triggered_neural.to_pickle(
+    os.path.join(output_directory, 'big_triggered_neural'))
+big_click_params.to_pickle(
+    os.path.join(output_directory, 'big_click_params'))
