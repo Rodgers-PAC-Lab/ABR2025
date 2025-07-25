@@ -1,20 +1,68 @@
-## Remove outliers, aggregate, and average ABRs
-# Looks like it also extracts ABR around those clicks, and then also 
-# calculates thresholds (TODO: break this into its own script)
-#
+## Remove outliers, aggregate ABRs, and calculate thresholds
+# Writes out:
+#   big_abrs - averaged ABRs
+#   thresholds - computed ABR thresholds
 
+import os
+import datetime
+import glob
+import json
+import scipy.signal
+import numpy as np
+import pandas
+from paclab import abr
+import my.plot
+import matplotlib.pyplot as plt
+import tqdm
+
+
+## Paths
+# Load the required file filepaths.json (see README)
+with open('filepaths.json') as fi:
+    paths = json.load(fi)
+
+# Parse into paths to raw data and output directory
+raw_data_directory = paths['raw_data_directory']
+output_directory = paths['output_directory']
+
+
+## Params
+# Outlier params
+abs_max_sigma = 3
+stdev_sigma = 3
+
+
+## Load previous results
+# Load results of Step1
+recording_metadata = pandas.read_pickle(
+    os.path.join(output_directory, 'recording_metadata'))
+
+# Load results of Step2
+big_triggered_ad = pandas.read_pickle(
+    os.path.join(output_directory, 'big_triggered_ad'))
+big_triggered_neural = pandas.read_pickle(
+    os.path.join(output_directory, 'big_triggered_neural'))
+big_click_params = pandas.read_pickle(
+    os.path.join(output_directory, 'big_click_params'))
+
+
+## Aggregate
 # Count the number of trials in each experiment
-trial_counts = big_triggered_neural.groupby(['date', 'mouse', 'recording', 'label', 'channel']).count()
+trial_counts = big_triggered_neural.groupby(
+    ['date', 'mouse', 'recording', 'label', 'channel']).count()
 
 # Iterate over recordings
 abrs_l = []
 arts_l = []
 keys_l = []
 for date, mouse, recording in recording_metadata.index:
+
     # Slice
     triggered_neural = big_triggered_neural.loc[date].loc[mouse].loc[recording]
 
+
     ## Identify outlier trials, separately by channel
+    # Trim outliers
     triggered_neural2 = triggered_neural.groupby('channel').apply(
         lambda df: abr.signal_processing.trim_outliers(
             df.droplevel('channel'),
@@ -26,6 +74,7 @@ for date, mouse, recording in recording_metadata.index:
     triggered_neural2 = triggered_neural2.reorder_levels(
         triggered_neural.index.names).sort_index()
 
+
     ## Aggregate
     # Average by polarity, label, channel over t_samples
     avg_by_condition = triggered_neural2.groupby(
@@ -36,6 +85,7 @@ for date, mouse, recording in recording_metadata.index:
 
     # The artefact subtracts over polarity
     avg_arts = (avg_by_condition.loc[True] - avg_by_condition.loc[False]) / 2
+
 
     ## Store
     abrs_l.append(avg_abrs)
@@ -52,23 +102,28 @@ big_arts = pandas.concat(arts_l, keys=keys_l, names=['date', 'mouse', 'recording
 ## Join on speaker_side
 # Should do this at the same time as joining channel
 idx = big_abrs.index.to_frame().reset_index(drop=True)
-idx = idx.join(recording_metadata['speaker_side'], on=['date', 'mouse', 'recording'])
+idx = idx.join(
+    recording_metadata['speaker_side'], on=['date', 'mouse', 'recording'])
 big_abrs.index = pandas.MultiIndex.from_frame(idx)
 big_abrs = big_abrs.reorder_levels(
     ['date', 'mouse', 'speaker_side', 'recording', 'channel', 'label']
-).sort_index()
+    ).sort_index()
 
 # Same for arts
 idx = big_arts.index.to_frame().reset_index(drop=True)
-idx = idx.join(recording_metadata['speaker_side'], on=['date', 'mouse', 'recording'])
+idx = idx.join(
+    recording_metadata['speaker_side'], on=['date', 'mouse', 'recording'])
 big_arts.index = pandas.MultiIndex.from_frame(idx)
 big_arts = big_arts.reorder_levels(
     ['date', 'mouse', 'speaker_side', 'recording', 'channel', 'label']
-).sort_index()
+    ).sort_index()
 
-## Further aggregate over recordings
+
+## Further aggregate over recordings within an experiment
 # Average recordings together where everything else is the same
-big_abrs = big_abrs.groupby(['date', 'mouse', 'recording', 'channel', 'speaker_side', 'label']).mean()
+big_abrs = big_abrs.groupby(
+    ['date', 'mouse', 'recording', 'channel', 'speaker_side', 'label']).mean()
+
 
 ## Calculate the stdev(ABR) as a function of level
 # window=20 (1.25 ms) seems the best compromise between smoothing the whole
@@ -110,6 +165,15 @@ threshold_db = over_thresh.loc[over_thresh.values].groupby(
 # reindex to get those that are never above threshold
 threshold_db = threshold_db.reindex(big_abr_baseline_rms.index)
 threshold_db = pandas.DataFrame(threshold_db, columns=['threshold'])
+
+
+
+## TODO
+# Move threshold elsewhere
+# Plot the noise level as a function of trial count
+1/0
+
+
 
 
 ## Store
