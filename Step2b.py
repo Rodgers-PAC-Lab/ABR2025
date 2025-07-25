@@ -1,4 +1,7 @@
 ## Remove outliers, aggregate, and average ABRs
+# Looks like it also extracts ABR around those clicks, and then also 
+# calculates thresholds (TODO: break this into its own script)
+#
 
 # Count the number of trials in each experiment
 trial_counts = big_triggered_neural.groupby(['date', 'mouse', 'recording', 'label', 'channel']).count()
@@ -110,8 +113,5 @@ threshold_db = pandas.DataFrame(threshold_db, columns=['threshold'])
 
 
 ## Store
-big_triggered_ad.to_pickle(os.path.join(output_directory, 'big_triggered_ad'))
-big_triggered_neural.to_pickle(os.path.join(output_directory, 'big_triggered_neural'))
-big_click_params.to_pickle(os.path.join(output_directory, 'big_click_params'))
 big_abrs.to_pickle(os.path.join(output_directory, 'big_abrs'))
 threshold_db.to_pickle(os.path.join(output_directory, 'thresholds'))
