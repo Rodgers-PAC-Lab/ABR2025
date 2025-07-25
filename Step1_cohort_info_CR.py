@@ -1,6 +1,13 @@
 # This script goes through 'mouse_info.csv'
 # For each date and mouse, it gets the recording metadata for those recordings
 # and checks to make sure it can load the data files.
+#
+# An "experiment" is a series of "recordings" on a single day from a single mouse
+# One mouse might be tested on multiple days, and these are different experiments
+# Multiple mice might be tested on the same day, and these are different experiments
+# On disk, all data from the same day are combined into the same dated directory,
+# so experiments are mixed together. This script will split them apart.
+#
 # At the end of the script it creates these pickles:
 #   recording_metadata: all the recording metadata from all dates and mice
 #   cohort_experiments: mouse_info.csv with proper formats and with age computed
@@ -48,13 +55,6 @@ cohort_experiments['age'] = cohort_experiments['age'].apply(lambda x: x.days)
 
 
 ## Load metadata from each session
-# An "experiment" is a series of "recordings" on a single day from a single mouse
-# One mouse might be tested on multiple days, and these are different experiments
-# Multiple mice might be tested on the same day, and these are different experiments
-#
-# On disk, all data from the same day are combined into the same dated directory,
-# so experiments are mixed together
-#
 # For every day, there is a _notes_v5.csv file in the GUI data directory, and
 # that csv file labels the mouse for every recording on that day
 #
@@ -123,10 +123,14 @@ for i_day in cohort_experiments['date'].unique():
 # Indexed by date * mouse * recording, with 1 row per recording
 recording_metadata = pandas.concat(day_notes_l)
 recording_metadata['include'] = recording_metadata['include'].fillna(True)
+
 # There's some recordings with v6 metadata which has an extra 'ch4_config' column
 # Re-order the columns so that's next to the other channel configs because it's annoying
-recording_metadata = recording_metadata.reindex(columns=['ch0_config', 'ch2_config', 'ch4_config', 'speaker_side',
-        'amplitude', 'include', 'notes', 'recording_name', 'datafile'])
+recording_metadata = recording_metadata.reindex(
+    columns=[
+    'ch0_config', 'ch2_config', 'ch4_config', 'speaker_side',
+    'amplitude', 'include', 'notes', 'recording_name', 'datafile',
+    ])
 
 
 ## Store
