@@ -1,12 +1,11 @@
 ## Identify and categorize clicks, and slice neural and audio data around them
-# This script takes a while.
+# This script takes a while - 12 minutes or so
 #
 # Writes out the following in the output directory
 #   big_triggered_ad - audio data triggered on clicks
 #   big_triggered_neural - neural data triggered on clicks
 #   big_click_params - click metadata
-#   big_abrs - averaged ABRs
-#   thresholds - computed ABR thresholds
+
 
 import os
 import datetime
@@ -19,19 +18,6 @@ from paclab import abr
 import my.plot
 import matplotlib.pyplot as plt
 import tqdm
-
-
-## Params
-abr_start_sample = -40
-abr_stop_sample = 120
-abr_highpass_freq = 300
-abr_lowpass_freq = 3000
-sampling_rate = 16000 # TODO: store in recording_metadata?
-neural_channel_numbers = [0, 2, 4]
-
-# Outlier params
-abs_max_sigma = 3
-stdev_sigma = 3
 
 
 ## Paths
@@ -51,10 +37,48 @@ if not os.path.exists(click_data_dir):
 
 
 ## Load results of main1
-cohort_experiments = pandas.read_pickle(
-    os.path.join(output_directory, 'cohort_experiments'))
 recording_metadata = pandas.read_pickle(
     os.path.join(output_directory, 'recording_metadata'))
+
+
+## Params
+abr_start_sample = -40
+abr_stop_sample = 120
+abr_highpass_freq = 300
+abr_lowpass_freq = 3000
+
+# Recording params
+# TODO: store in recording_metadata?
+sampling_rate = 16000 
+neural_channel_numbers = [0, 2, 4]
+audio_channel_number = 7
+
+
+## Set up the click categories
+# In this dataset, all clicks should have this amplitude
+expected_amplitude = [
+    0.01,  0.0063,  0.004, 0.0025, 0.0016, 0.001, 0.00063, 
+    0.0004, 0.00025, 0.00016, 0.0001, 6.3e-05, 4e-05,
+    ]
+
+# Convert the autopilot amplitudes to voltages
+# This 1.34 is empirically determined to align autopilot with measured voltage
+log10_voltage = np.sort(np.log10(expected_amplitude) + 1.34)
+
+# SPL as measured with the fancy microphone
+amplitude_labels = np.array(
+    [49, 51, 54, 58, 61, 65, 69, 73, 77, 81, 85, 88, 91])
+
+# Convert the voltages to cuts
+amplitude_cuts = (log10_voltage[1:] + log10_voltage[:-1]) / 2
+
+# Add a first and last amplitude cut
+diff_cut = np.mean(np.diff(amplitude_cuts))
+amplitude_cuts = np.concatenate([
+    [amplitude_cuts[0] - diff_cut],
+    amplitude_cuts,
+    [amplitude_cuts[-1] + diff_cut],
+    ])
 
 
 ## Load data from each recording
@@ -72,44 +96,18 @@ for date, mouse, recording in tqdm.tqdm(recording_metadata.index):
     
     ## Load raw data in volts
     # Get the filename
-    folder_datestr = datetime.datetime.strftime(date, '%Y-%m-%d')
-    recording_folder = os.path.normpath(this_recording['datafile'])
+    recording_folder = os.path.normpath(
+        os.path.join(raw_data_directory, this_recording['short_datafile']))
     
     # Load the data
     data = abr.loading.load_recording(recording_folder)
     data = data['data']
     
     # Parse into neural and speaker data
-    # Presently, neural data is always on channels 0, 2, and 4 at most (maybe fewer)
-    speaker_signal_V = data[:, 7]
+    speaker_signal_V = data[:, audio_channel_number]
     neural_data_V = data[:, neural_channel_numbers]
 
 
-    ## Set up the click categories
-    # Convert the autopilot amplitudes to voltages
-    # This 1.34 is empirically determined to align autopilot with measured voltage
-    log10_voltage = np.sort(np.log10(this_recording['amplitude']) + 1.34)
-    
-    # Generate labels .. convert voltage to dB and normalize to 70 dB, just 
-    # to make it positive, this is not SPL
-    amplitude_labels_old = np.rint(20 * log10_voltage + 70).astype(int)
-    
-    # SPL as measured with the fancy microphone
-    amplitude_labels = np.array(
-        [49, 51, 54, 58, 61, 65, 69, 73, 77, 81, 85, 88, 91])
-
-    # Convert the voltages to cuts
-    amplitude_cuts = (log10_voltage[1:] + log10_voltage[:-1]) / 2
-
-    # Add a first and last amplitude cut
-    diff_cut = np.mean(np.diff(amplitude_cuts))
-    amplitude_cuts = np.concatenate([
-        [amplitude_cuts[0] - diff_cut],
-        amplitude_cuts,
-        [amplitude_cuts[-1] + diff_cut],
-        ])
-    
-    
     ## Identify and categorize clicks
     # Use the least cut as the threshold
     threshold_V = 10 ** amplitude_cuts.min()
