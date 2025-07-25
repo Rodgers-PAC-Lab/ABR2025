@@ -56,9 +56,6 @@ cohort_experiments = pandas.read_pickle(
 recording_metadata = pandas.read_pickle(
     os.path.join(output_directory, 'recording_metadata'))
 
-# Drop those with 'include' == False
-recording_metadata = recording_metadata[recording_metadata['include'] == True]
-
 
 ## Load data from each recording
 click_params_l = []
