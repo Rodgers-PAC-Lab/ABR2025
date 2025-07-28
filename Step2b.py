@@ -1,7 +1,6 @@
 ## Remove outliers, aggregate ABRs, and calculate thresholds
 # Writes out:
 #   big_abrs - averaged ABRs
-#   thresholds - computed ABR thresholds
 
 import os
 import datetime
@@ -49,7 +48,7 @@ big_click_params = pandas.read_pickle(
 ## Aggregate
 # Count the number of trials in each experiment
 trial_counts = big_triggered_neural.groupby(
-    ['date', 'mouse', 'recording', 'label', 'channel']).count()
+    ['date', 'mouse', 'recording', 'label', 'channel']).size()
 
 # Iterate over recordings
 abrs_l = []
@@ -125,57 +124,6 @@ big_abrs = big_abrs.groupby(
     ['date', 'mouse', 'recording', 'channel', 'speaker_side', 'label']).mean()
 
 
-## Calculate the stdev(ABR) as a function of level
-# window=20 (1.25 ms) seems the best compromise between smoothing the whole
-# response and localizing it to a reasonably narrow window (and not extending
-# into the baseline period)
-# Would be good to extract more baseline to use here
-# The peak is around sample 34 (2.1 ms), ie sample 24 - 44, and there is a
-# variable later peak.
-big_abr_stds = big_abrs.T.rolling(window=20, center=True, min_periods=1).std().T
-
-# Use samples -40 to -20 as baseline
-# Generally this should be <0.25 uV, but the actual value depends on how
-# the averaging was done
-big_abr_baseline_rms = big_abr_stds.loc[:, -30].unstack('label')
-
-# Choose a baseline for each recording as the median over levels
-# It's lognormal so mean might be skewed. A mean of log could be good
-big_abr_baseline_rms = big_abr_baseline_rms.median(axis=1)
-
-# Use samples 24 - 44 as evoked peak
-# Evoked response increases linearly with level in dB
-# Interestingly, each recording appears to be multiplicatively scaled
-# (shifted up and down on a log plot). The variability in microvolts increases
-# with level, but the variability in log-units is consistent over level.
-big_abr_evoked_rms = big_abr_stds.loc[:, 34].unstack('label')
-
-# Determine threshold crossing as 3*baseline. Note: more averaging will
-# decrease baseline and therefore threshold, as will better noise levels.
-# But this still seems better than a fixed threshold in microvolts.
-# TODO: consider smoothing traces before finding threshold crossing
-over_thresh = big_abr_evoked_rms.T > 3 * big_abr_baseline_rms
-over_thresh = over_thresh.T.stack()
-# threshold
-# typically a bit better on LR even though LR has slightly higher baseline
-threshold_db = over_thresh.loc[over_thresh.values].groupby(
-    ['date', 'mouse', 'recording', 'channel', 'speaker_side']).apply(
-    lambda df: df.index[0][-1])
-
-# reindex to get those that are never above threshold
-threshold_db = threshold_db.reindex(big_abr_baseline_rms.index)
-threshold_db = pandas.DataFrame(threshold_db, columns=['threshold'])
-
-
-
-## TODO
-# Move threshold elsewhere
-# Plot the noise level as a function of trial count
-1/0
-
-
-
-
 ## Store
 big_abrs.to_pickle(os.path.join(output_directory, 'big_abrs'))
-threshold_db.to_pickle(os.path.join(output_directory, 'thresholds'))
+trial_counts.to_pickle(os.path.join(output_directory, 'trial_counts'))
