@@ -1,5 +1,8 @@
 ## Pull out EKG
-# 
+# Writes out
+#   EKG_heartbeats - time of each beat
+#   EKG_stats - statistics of each recording (e.g., mean EKG size)
+#   EKG_waveforms - mean EKG waveform of each recording
 
 import os
 import datetime
