@@ -1,4 +1,5 @@
 ## Pull out EKG
+# 
 
 import os
 import datetime
@@ -29,43 +30,14 @@ recording_metadata = pandas.read_pickle(
 
 
 ## Params
-abr_start_sample = -40
-abr_stop_sample = 120
-abr_highpass_freq = 300
-abr_lowpass_freq = 3000
+heartbeat_highpass_freq = 20
+heartbeat_lowpass_freq = 500
 
 # Recording params
 # TODO: store in recording_metadata?
 sampling_rate = 16000 
 neural_channel_numbers = [0, 2, 4]
 audio_channel_number = 7
-
-
-## Set up the click categories
-# In this dataset, all clicks should have this amplitude
-expected_amplitude = [
-    0.01,  0.0063,  0.004, 0.0025, 0.0016, 0.001, 0.00063, 
-    0.0004, 0.00025, 0.00016, 0.0001, 6.3e-05, 4e-05,
-    ]
-
-# Convert the autopilot amplitudes to voltages
-# This 1.34 is empirically determined to align autopilot with measured voltage
-log10_voltage = np.sort(np.log10(expected_amplitude) + 1.34)
-
-# SPL as measured with the fancy microphone
-amplitude_labels = np.array(
-    [49, 51, 54, 58, 61, 65, 69, 73, 77, 81, 85, 88, 91])
-
-# Convert the voltages to cuts
-amplitude_cuts = (log10_voltage[1:] + log10_voltage[:-1]) / 2
-
-# Add a first and last amplitude cut
-diff_cut = np.mean(np.diff(amplitude_cuts))
-amplitude_cuts = np.concatenate([
-    [amplitude_cuts[0] - diff_cut],
-    amplitude_cuts,
-    [amplitude_cuts[-1] + diff_cut],
-    ])
 
 
 ## Load data from each recording
@@ -75,6 +47,9 @@ triggered_neural_l = []
 keys_l = []
 
 # Iterate over recordings
+heartbeats_l = []
+heartbeats_keys_l = []
+heartbeats_sliced_l = []
 for date, mouse, recording in tqdm.tqdm(recording_metadata.index):
     
     # Get the recording info
@@ -95,105 +70,182 @@ for date, mouse, recording in tqdm.tqdm(recording_metadata.index):
     neural_data_V = data[:, neural_channel_numbers]
 
 
-    ## Identify and categorize clicks
-    # Use the least cut as the threshold
-    threshold_V = 10 ** amplitude_cuts.min()
-    
-    # Identify clicks
-    identified_clicks = abr.signal_processing.identify_click_times(
-        speaker_signal_V, 
-        threshold_V=threshold_V,
-        sampling_rate=sampling_rate, 
-        slice_start_sample=abr_start_sample, 
-        slice_stop_sample=abr_stop_sample,
-        )
-    
-    # Pull out the highpassed signal because we need it later
-    speaker_signal_hp = identified_clicks['highpassed']
-
-    # Categorize them
-    click_params = abr.signal_processing.categorize_clicks(
-        identified_clicks['peak_time_samples'], 
-        speaker_signal_hp, 
-        amplitude_cuts, 
-        amplitude_labels,
-        )    
-
-
-    ## Extract each trigger from the audio signal
-    triggered_ad = abr.signal_processing.slice_audio_on_clicks(
-        speaker_signal_hp, click_params)
-
-
-    ## Extract neural data locked to onsets
-    # Highpass neural data
+    ## Bandpass heartbeat
+    # Bandpass all neural channels
     nyquist_freq = sampling_rate / 2
     ahi, bhi = scipy.signal.butter(
         2, (
-        abr_highpass_freq / nyquist_freq, 
-        abr_lowpass_freq / nyquist_freq), 
+        heartbeat_highpass_freq / nyquist_freq, 
+        heartbeat_lowpass_freq / nyquist_freq), 
         btype='bandpass')
-    neural_data_hp = scipy.signal.filtfilt(ahi, bhi, neural_data_V, axis=0)
+    ekg_signal = scipy.signal.filtfilt(ahi, bhi, neural_data_V, axis=0)
 
-    # Extract highpassed neural data around triggers
-    # Shape is (n_triggers, n_timepoints, n_channels)
-    triggered_neural = np.array([
-        neural_data_hp[trigger + abr_start_sample:trigger + abr_stop_sample]
-        for trigger in click_params['t_samples']])
+    # Convert to uV
+    ekg_signal = ekg_signal * 1e6
 
-    # Remove channel as a level
-    triggered_neural = triggered_neural.reshape(
-        [triggered_neural.shape[0], -1])        
-
+    # Find heartbeats, indexed into ekg_signal
+    # 
+    # SHAPE OF EKG
+    # Use the first channel (LR), which is biggest
+    # The peak is always positive on LR and LV, and negative on RV
+    # LV and RV are nearly opposites, so LR is about double
+    # The central peak is maybe 5 ms wide and the whole thing is maybe 25 ms
+    #
+    # HEIGHT and PROMINENCE
+    # The lowest SNR recording is Cat_229 on 2025-05-15, esp recording 1
+    # On this recording, the heights are 40-50 uV and prominences 50-60
+    # Prominences are larger because of the dip around the peak
+    # Breathing artefacts can get up to 25
+    # There is a kind of bimodality in the raw EKG signal with a dip around 27
+    # A threshold of 35 seems appropriate, we probably would prefer to lose
+    # a few heartbeats than to pick up too much noise
+    #
+    # INTER-BEAT INTERVAL ("DISTANCE")
+    # The inter-beat-interval is 3000-7500 samples (187-469 ms)
+    # Enforce a minimum of 1000 samples
+    #
+    # WIDTH
+    # The main peak is about 5 ms wide (80 samples), so set wlen to 150
+    # The 'width' criterion is actually a half-width if rel_height is 0.5
+    # For some reason there's another, narrower mode in widths, around half-width 35
+    # So use a wide range of (10, 100) on width
+    ekg_threshold = 35 # uV
+    peak_times, peak_props = scipy.signal.find_peaks(
+        ekg_signal[:, 0], 
+        height=ekg_threshold, 
+        distance=1000,
+        prominence=ekg_threshold,
+        wlen=150,
+        width=(10, 150),
+        rel_height=0.5,
+        )    
+    
     # DataFrame
-    triggered_neural = pandas.DataFrame(triggered_neural)
-    triggered_neural.index = pandas.MultiIndex.from_frame(
-        click_params[['label', 'polarity', 't_samples']])
-    triggered_neural = triggered_neural.reorder_levels(
-        ['label', 'polarity', 't_samples']).sort_index()
+    heartbeats = pandas.DataFrame.from_dict(peak_props)
+    heartbeats['sample'] = peak_times
 
-    # The columns are interdigitated samples and channels
-    triggered_neural.columns = pandas.MultiIndex.from_product([
-        pandas.Index(range(abr_start_sample, abr_stop_sample), name='timepoint'),
-        pandas.Index(neural_channel_numbers, name='channel')
-        ])
+    # Exclude too close to edge
+    slice_halfwidth = 400
+    heartbeats = heartbeats[
+        (heartbeats['sample'] >= slice_halfwidth) &
+        (heartbeats['sample'] < len(ekg_signal) - slice_halfwidth)
+        ].reset_index(drop=True)
+    heartbeats.index.name = 'beat'
+
+    # Error check
+    if len(heartbeats) < 10:
+        1/0
     
-    # Rename the channels meaningfully
-    triggered_neural = triggered_neural.rename(columns={
-        0: this_recording.loc['ch0_config'], 
-        2: this_recording.loc['ch2_config'],
-        4: this_recording.loc['ch4_config']
-        }, level='channel')
+    # Extract (n_trials, n_timepoints, 3)
+    sliced_arr = np.array([
+        ekg_signal[peak - slice_halfwidth:peak + slice_halfwidth]
+        for peak in heartbeats['sample']])
     
-    # Drop NN if any
-    triggered_neural = triggered_neural.drop(
-        'NN', level='channel', axis=1, errors='ignore')
+    # Squeeze into (n_trials, (n_timepoints * 3))
+    sliced_arr = sliced_arr.reshape((len(sliced_arr), -1))
     
-    # Stack channel
-    triggered_neural = triggered_neural.stack('channel', future_stack=True)
+    # DataFrame it
+    # Index is the same as the heartbeats
+    sliced_df = pandas.DataFrame(sliced_arr, index=heartbeats.index)
     
+    # Form the columns, taking into account the three channels
+    level0 = pandas.Series(
+        np.arange(-slice_halfwidth, slice_halfwidth, dtype=int), 
+        name='timepoint')
+    level1 = pandas.Series(neural_channel_numbers, name='channel')
+    sliced_df.columns = pandas.MultiIndex.from_product([level0, level1])
+    
+    # Store
+    heartbeats_l.append(heartbeats)
+    heartbeats_keys_l.append((date, mouse, recording))
+    heartbeats_sliced_l.append(sliced_df)
 
-    ## Store
-    click_params_l.append(click_params)
-    triggered_ad_l.append(triggered_ad)
-    triggered_neural_l.append(triggered_neural)
-    keys_l.append((date, mouse, recording))
+# Concat
+heart_df = pandas.concat(
+    heartbeats_l, keys=heartbeats_keys_l, 
+    names=['date', 'mouse', 'recording'])
+beats_df = pandas.concat(
+    heartbeats_sliced_l, keys=heartbeats_keys_l, 
+    names=['date', 'mouse', 'recording'])
 
 
-## Concat
-big_triggered_ad = pandas.concat(
-    triggered_ad_l, keys=keys_l, names=['date', 'mouse', 'recording'])
-big_triggered_neural = pandas.concat(
-    triggered_neural_l, keys=keys_l, names=['date', 'mouse', 'recording'])
-big_click_params = pandas.concat(
-    click_params_l, keys=keys_l, names=['date', 'mouse', 'recording']
-    ).set_index('t_samples', append=True).droplevel(None).sort_index()
+## Mean waveform by session
+mean_by_session = beats_df.groupby(['date', 'mouse', 'recording']).mean()
 
 
-## Store
-big_triggered_ad.to_pickle(
-    os.path.join(output_directory, 'big_triggered_ad'))
-big_triggered_neural.to_pickle(
-    os.path.join(output_directory, 'big_triggered_neural'))
-big_click_params.to_pickle(
-    os.path.join(output_directory, 'big_click_params'))
+## Summarize waveform shape by session
+stats_by_session = heart_df.groupby(['date', 'mouse', 'recording']).median()[
+    ['peak_heights', 'prominences', 'widths']]
+
+# Add on inter-beat interval
+stats_by_session['IBI'] = heart_df['sample'].diff().dropna().groupby(
+    ['date', 'mouse', 'recording']).median()
+
+
+## Plots
+PLOT_EKG_GRAND_MEAN = True
+PLOT_EKG_SESSION_MEAN = True
+PLOT_EKG_STATS = True
+
+if PLOT_EKG_GRAND_MEAN:
+    # Plot grand mean by channel
+    f, ax = my.plot.figure_1x1_standard()
+    grand_mean = mean_by_session.mean().unstack('channel')
+    ax.plot(
+        grand_mean.index.values / sampling_rate * 1000,
+        grand_mean.values,
+        )
+    ax.set_xlabel('time (ms)')
+    ax.set_ylabel('EKG (uV)')
+    ax.legend(['LR', 'LV', 'RV'])
+    ax.set_xlim((-15, 15))
+    my.plot.despine(ax)
+    f.savefig('PLOT_EKG_GRAND_MEAN.svg')
+    f.savefig('PLOT_EKG_GRAND_MEAN.png', dpi=300)
+
+if PLOT_EKG_SESSION_MEAN:
+    # Plot LR by session (each channel seems equally variable)
+    f, ax = my.plot.figure_1x1_standard()
+    LR_mean = mean_by_session.xs(0, level='channel', axis=1)
+    LR_mean_by_session = LR_mean.groupby(['date', 'mouse', 'recording']).mean()
+    ax.plot(
+        LR_mean_by_session.columns.values / sampling_rate * 1000,
+        LR_mean_by_session.T,
+        color='k', alpha=.1, lw=1)
+    ax.set_xlabel('time (ms)')
+    ax.set_xlim((-15, 15))
+    ax.set_ylabel('EKG (uV)')
+    my.plot.despine(ax)
+    f.savefig('PLOT_EKG_SESSION_MEAN.svg')
+    f.savefig('PLOT_EKG_SESSION_MEAN.png', dpi=300)
+
+if PLOT_EKG_STATS:
+    # Histogram height, prominence, width, and IBI by session
+    # Height: mode at 66, range 50-140, long tail to 210, min 50
+    # Prominence: mode at 90, range 60-150, long tail to 250, min 55
+    # Width: bimodal; mode at 40, dip at 48, mode at 56, long tail to 68
+    # IBI: range 4000-6000, mode 5000, min 3200, max 6500
+    f, axa = plt.subplots(1, 4, figsize=(12, 3))
+    axa[0].hist(by_session['peak_heights'], bins=21)
+    axa[0].set_xlabel('height (uV)')
+    axa[1].hist(by_session['prominences'], bins=21)
+    axa[1].set_xlabel('prominence (uV)')
+    axa[2].hist(by_session['widths'], bins=21)
+    axa[2].set_xlabel('width (samples)')
+    axa[3].hist(by_session['IBI'] / sampling_rate * 1000, bins=21)
+    axa[3].set_xlabel('IBI (ms)')
+    f.tight_layout()
+    f.savefig('PLOT_EKG_STATS.svg')
+    f.savefig('PLOT_EKG_STATS.png', dpi=300)
+
+    # These narrow and wide ones seem to have fairly similar shapes, just stretched
+    #~ mask = by_session['widths'] < 47
+
+plt.show()
+
+
+## Save
+# TODO: Correlate EKG size and evoked ABR size
+heart_df.to_pickle(os.path.join(output_directory, 'EKG_heartbeats'))
+stats_by_session.to_pickle(os.path.join(output_directory, 'EKG_stats'))
+mean_by_session.to_pickle(os.path.join(output_directory, 'EKG_waveform'))
