@@ -1,6 +1,10 @@
 ## Compute thresholds
 # Writes out
 #   thresholds - computed ABR thresholds
+#
+# Plots
+#   BASELINE_VS_N_TRIALS
+#   HISTOGRAM_EVOKED_RMS_BY_LEVEL
 
 import os
 import datetime
@@ -13,6 +17,11 @@ from paclab import abr
 import my.plot
 import matplotlib.pyplot as plt
 import tqdm
+
+
+## Plotting
+my.plot.manuscript_defaults()
+my.plot.font_embed()
 
 
 ## Paths
@@ -62,21 +71,21 @@ big_abr_baseline_rms = big_abr_baseline_rms.median(axis=1)
 # with level, but the variability in log-units is consistent over level.
 big_abr_evoked_rms = big_abr_stds.loc[:, 34].unstack('label')
 
-# Determine threshold crossing as 3*baseline. Note: more averaging will
-# decrease baseline and therefore threshold, as will better noise levels.
-# But this still seems better than a fixed threshold in microvolts.
-# TODO: consider smoothing traces before finding threshold crossing
-over_thresh = big_abr_evoked_rms.T > 3 * big_abr_baseline_rms
-over_thresh = over_thresh.T.stack()
-# threshold
-# typically a bit better on LR even though LR has slightly higher baseline
-threshold_db = over_thresh.loc[over_thresh.values].groupby(
-    ['date', 'mouse', 'recording', 'channel', 'speaker_side']).apply(
-    lambda df: df.index[0][-1])
+#~ # Determine threshold crossing as 3*baseline. Note: more averaging will
+#~ # decrease baseline and therefore threshold, as will better noise levels.
+#~ # But this still seems better than a fixed threshold in microvolts.
+#~ # TODO: consider smoothing traces before finding threshold crossing
+#~ over_thresh = big_abr_evoked_rms.T > 3 * big_abr_baseline_rms
+#~ over_thresh = over_thresh.T.stack()
+#~ # threshold
+#~ # typically a bit better on LR even though LR has slightly higher baseline
+#~ threshold_db = over_thresh.loc[over_thresh.values].groupby(
+    #~ ['date', 'mouse', 'recording', 'channel', 'speaker_side']).apply(
+    #~ lambda df: df.index[0][-1])
 
-# reindex to get those that are never above threshold
-threshold_db = threshold_db.reindex(big_abr_baseline_rms.index)
-threshold_db = pandas.DataFrame(threshold_db, columns=['threshold'])
+#~ # reindex to get those that are never above threshold
+#~ threshold_db = threshold_db.reindex(big_abr_baseline_rms.index)
+#~ threshold_db = pandas.DataFrame(threshold_db, columns=['threshold'])
 
 
 ## Plots
@@ -153,7 +162,3 @@ if HISTOGRAM_EVOKED_RMS_BY_LEVEL:
 
     f.savefig('HISTOGRAM_EVOKED_RMS_BY_LEVEL.svg')
     f.savefig('HISTOGRAM_EVOKED_RMS_BY_LEVEL.png', dpi=300)
-
-
-## TODO Move threshold elsewhere
-threshold_db.to_pickle(os.path.join(output_directory, 'thresholds'))

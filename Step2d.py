@@ -3,6 +3,11 @@
 #   EKG_heartbeats - time of each beat
 #   EKG_stats - statistics of each recording (e.g., mean EKG size)
 #   EKG_waveforms - mean EKG waveform of each recording
+#
+# Plots
+#   PLOT_EKG_GRAND_MEAN
+#   PLOT_EKG_SESSION_MEAN
+#   PLOT_EKG_STATS
 
 import os
 import datetime
@@ -15,6 +20,11 @@ from paclab import abr
 import my.plot
 import matplotlib.pyplot as plt
 import tqdm
+
+
+## Plotting defaults
+my.plot.manuscript_defaults()
+my.plot.font_embed()
 
 
 ## Paths
@@ -229,13 +239,13 @@ if PLOT_EKG_STATS:
     # Width: bimodal; mode at 40, dip at 48, mode at 56, long tail to 68
     # IBI: range 4000-6000, mode 5000, min 3200, max 6500
     f, axa = plt.subplots(1, 4, figsize=(12, 3))
-    axa[0].hist(by_session['peak_heights'], bins=21)
+    axa[0].hist(stats_by_session['peak_heights'], bins=21)
     axa[0].set_xlabel('height (uV)')
-    axa[1].hist(by_session['prominences'], bins=21)
+    axa[1].hist(stats_by_session['prominences'], bins=21)
     axa[1].set_xlabel('prominence (uV)')
-    axa[2].hist(by_session['widths'], bins=21)
+    axa[2].hist(stats_by_session['widths'], bins=21)
     axa[2].set_xlabel('width (samples)')
-    axa[3].hist(by_session['IBI'] / sampling_rate * 1000, bins=21)
+    axa[3].hist(stats_by_session['IBI'] / sampling_rate * 1000, bins=21)
     axa[3].set_xlabel('IBI (ms)')
     f.tight_layout()
     f.savefig('PLOT_EKG_STATS.svg')

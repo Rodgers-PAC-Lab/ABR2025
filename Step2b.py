@@ -1,6 +1,7 @@
 ## Remove outliers, aggregate ABRs, and calculate thresholds
 # Writes out:
 #   big_abrs - averaged ABRs
+#   trial_counts - trial counts
 
 import os
 import datetime
@@ -45,57 +46,65 @@ big_click_params = pandas.read_pickle(
     os.path.join(output_directory, 'big_click_params'))
 
 
-## Aggregate
-# Count the number of trials in each experiment
-trial_counts = big_triggered_neural.groupby(
+## Drop outlier trials, separately by channel
+# Consider outliers separately for every channel on every recording
+group_by = ['date', 'mouse', 'recording', 'channel']
+gobj = big_triggered_neural.groupby(group_by)
+
+# We use this helper function to drop the groupby levels, otherwise
+# the levels get duplicated by gobj.apply
+def drop_outliers(df):
+    res = abr.signal_processing.trim_outliers(
+        df.droplevel(group_by),
+        abs_max_sigma=abs_max_sigma,
+        stdev_sigma=stdev_sigma,
+        )
+    
+    return res
+
+# Apply the drop
+big_triggered_neural2 = gobj.apply(drop_outliers)
+
+# Reorder levels to be like triggered_neural
+big_triggered_neural2 = big_triggered_neural2.reorder_levels(
+    big_triggered_neural.index.names).sort_index()
+
+
+## Count the number of trials remaining in each recording
+trial_counts = big_triggered_neural2.groupby(
     ['date', 'mouse', 'recording', 'label', 'channel']).size()
 
-# Iterate over recordings
-abrs_l = []
-arts_l = []
-keys_l = []
-for date, mouse, recording in recording_metadata.index:
 
-    # Slice
-    triggered_neural = big_triggered_neural.loc[date].loc[mouse].loc[recording]
+## Aggregate
+# Average out the trial
+by_polarity = big_triggered_neural2.groupby(
+    [lev for lev in big_triggered_neural2.index.names if lev != 't_samples']
+    ).mean()
 
+# Compute the big_abrs by adding over polarity
+big_abrs = 0.5 * (
+    by_polarity.xs(True, level='polarity') + 
+    by_polarity.xs(False, level='polarity')
+    )
 
-    ## Identify outlier trials, separately by channel
-    # Trim outliers
-    triggered_neural2 = triggered_neural.groupby('channel').apply(
-        lambda df: abr.signal_processing.trim_outliers(
-            df.droplevel('channel'),
-            abs_max_sigma=abs_max_sigma,
-            stdev_sigma=stdev_sigma,
-        ))
-
-    # Reorder levels to be like triggered_neural
-    triggered_neural2 = triggered_neural2.reorder_levels(
-        triggered_neural.index.names).sort_index()
+# Compute the big_arts by subtracting over polarity
+big_arts = 0.5 * (
+    by_polarity.xs(True, level='polarity') - 
+    by_polarity.xs(False, level='polarity')
+    )
 
 
-    ## Aggregate
-    # Average by polarity, label, channel over t_samples
-    avg_by_condition = triggered_neural2.groupby(
-        ['polarity', 'channel', 'label']).mean()
-
-    # The ABR adds over polarity
-    avg_abrs = (avg_by_condition.loc[True] + avg_by_condition.loc[False]) / 2
-
-    # The artefact subtracts over polarity
-    avg_arts = (avg_by_condition.loc[True] - avg_by_condition.loc[False]) / 2
+## TODO: review each individual recording and decide about keeping it
 
 
-    ## Store
-    abrs_l.append(avg_abrs)
-    arts_l.append(avg_arts)
-    keys_l.append((date, mouse, recording))
+## Arbitrarily choose Cat_229 on 2025-05-15 as the example to show
+single_trial_abr = big_triggered_neural2.loc[
+    datetime.date(2025, 5, 15)].loc['Cat_229'].loc[1]
 
-# Concat
-big_abrs = pandas.concat(abrs_l, keys=keys_l, names=['date', 'mouse', 'recording'])
-big_arts = pandas.concat(arts_l, keys=keys_l, names=['date', 'mouse', 'recording'])
+single_trial_abr = single_trial_abr.xs(91, level='label').xs('LV', level='channel')
 
-# TODO: identify which recordings have large arts and drop them
+f, ax = plt.subplots()
+ax.plot(single_trial_abr.T, color='k', alpha=.2)
 
 
 ## Join on speaker_side
