@@ -1,7 +1,12 @@
-## Remove outliers, aggregate ABRs, and calculate thresholds
+## Remove outliers and aggregates ABRs over trials
 # Writes out:
 #   big_abrs - averaged ABRs
 #   trial_counts - trial counts
+#
+# Plots:
+#   PLOT_SINGLE_TRIAL_ABR
+#   PLOT_TRIAL_AVERAGED_ABR
+#   PLOT_POSITIVE_AND_NEGATIVE_CLICKS
 
 import os
 import datetime
@@ -46,9 +51,22 @@ big_click_params = pandas.read_pickle(
     os.path.join(output_directory, 'big_click_params'))
 
 
+## Join on speaker_side
+# Should have done this at the same time as joining channel
+idx = big_triggered_neural.index.to_frame().reset_index(drop=True)
+idx = idx.join(
+    recording_metadata['speaker_side'], on=['date', 'mouse', 'recording'])
+big_triggered_neural.index = pandas.MultiIndex.from_frame(idx)
+
+# Reorder levels
+big_triggered_neural = big_triggered_neural.reorder_levels([
+    'date', 'mouse', 'recording', 'channel', 'speaker_side', 'label', 
+    'polarity', 't_samples']).sort_index()
+
+
 ## Drop outlier trials, separately by channel
 # Consider outliers separately for every channel on every recording
-group_by = ['date', 'mouse', 'recording', 'channel']
+group_by = ['date', 'mouse', 'recording', 'channel', 'speaker_side']
 gobj = big_triggered_neural.groupby(group_by)
 
 # We use this helper function to drop the groupby levels, otherwise
@@ -72,7 +90,7 @@ big_triggered_neural2 = big_triggered_neural2.reorder_levels(
 
 ## Count the number of trials remaining in each recording
 trial_counts = big_triggered_neural2.groupby(
-    ['date', 'mouse', 'recording', 'label', 'channel']).size()
+    ['date', 'mouse', 'speaker_side', 'recording', 'label', 'channel']).size()
 
 
 ## Aggregate
@@ -94,43 +112,112 @@ big_arts = 0.5 * (
     )
 
 
-## TODO: review each individual recording and decide about keeping it
+## Plots
+PLOT_SINGLE_TRIAL_ABR = True
+PLOT_TRIAL_AVERAGED_ABR = True
+PLOT_POSITIVE_AND_NEGATIVE_CLICKS = True
 
+if PLOT_SINGLE_TRIAL_ABR:
+    # Cat_229 rec 10 on 2025-05-20 is about top 25th percentile of response
+    # strength. So it's stronger than median, but not unusually strong.
+    # This is an RV recording with speaker_side L
+    single_trial_abr = big_triggered_neural2.loc[
+        datetime.date(2025, 5, 20)].loc['Cat_229'].loc[10].xs(
+        'RV', level='channel').droplevel('speaker_side')
 
-## Arbitrarily choose Cat_229 on 2025-05-15 as the example to show
-single_trial_abr = big_triggered_neural2.loc[
-    datetime.date(2025, 5, 15)].loc['Cat_229'].loc[1]
+    # Slice out loudest only
+    single_trial_abr = single_trial_abr.xs(91, level='label')
 
-single_trial_abr = single_trial_abr.xs(91, level='label').xs('LV', level='channel')
+    f, ax = plt.subplots(figsize=(4, 2.5))
+    f.subplots_adjust(bottom=.24, left=.15, right=.95, top=.89)
+    ax.plot(
+        single_trial_abr.columns.values / 16e3 * 1000,
+        single_trial_abr.T * 1e6, 
+        color='k', alpha=.05, lw=1)
+    ax.set_xlabel('time from sound (ms)')
+    ax.set_ylabel('ABR (uV)')
+    ax.set_yticks((-8, 0, 8))
+    ax.set_ylim((-8, 8))
+    ax.set_xlim((-2.5, 7.5))
+    ax.set_xticks((-2, 0, 2, 4, 6, ))
+    my.plot.despine(ax)
 
-f, ax = plt.subplots()
-ax.plot(single_trial_abr.T, color='k', alpha=.2)
+    # Plot the stimulus
+    ax.plot([0, 0.1], [5.5 / 6 * 8] * 2, 'k-', lw=3)
+    
+    f.savefig('PLOT_SINGLE_TRIAL_ABR.svg')
+    f.savefig('PLOT_SINGLE_TRIAL_ABR.png', dpi=300)
 
+if PLOT_TRIAL_AVERAGED_ABR:
+    # Plot the corresponding trial averaged ABR
+    trial_averaged_abr = big_triggered_neural2.loc[
+        datetime.date(2025, 5, 20)].loc['Cat_229'].loc[10].xs(
+        'RV', level='channel').droplevel('speaker_side')
 
-## Join on speaker_side
-# Should do this at the same time as joining channel
-idx = big_abrs.index.to_frame().reset_index(drop=True)
-idx = idx.join(
-    recording_metadata['speaker_side'], on=['date', 'mouse', 'recording'])
-big_abrs.index = pandas.MultiIndex.from_frame(idx)
-big_abrs = big_abrs.reorder_levels(
-    ['date', 'mouse', 'speaker_side', 'recording', 'channel', 'label']
-    ).sort_index()
+    # Aggregate
+    trial_averaged_abr = trial_averaged_abr.groupby('label').mean()
+    
+    # Plot
+    f, ax = plt.subplots(figsize=(4, 2.5))
+    f.subplots_adjust(bottom=.24, left=.15, right=.95, top=.89)
+    ax.plot(
+        trial_averaged_abr.columns.values / 16e3 * 1000,
+        trial_averaged_abr.T * 1e6, 
+        color='k', lw=1)
+    ax.set_xlabel('time from sound (ms)')
+    ax.set_ylabel('ABR (uV)')
+    ax.set_yticks((-6, 0, 6))
+    ax.set_ylim((-6, 6))
+    ax.set_xlim((-2.5, 7.5))
+    ax.set_xticks((-2, 0, 2, 4, 6, ))
+    my.plot.despine(ax)
+    
+    # Plot the stimulus
+    ax.plot([0, 0.1], [5.5, 5.5], 'k-', lw=3)
+    
+    # Plot the baseline period
+    ax.fill_between([-2.5, -1.25], y1=-6, y2=6, color='orange', alpha=0.5)
+    
+    f.savefig('PLOT_TRIAL_AVERAGED_ABR.svg')
+    f.savefig('PLOT_TRIAL_AVERAGED_ABR.png', dpi=300)
 
-# Same for arts
-idx = big_arts.index.to_frame().reset_index(drop=True)
-idx = idx.join(
-    recording_metadata['speaker_side'], on=['date', 'mouse', 'recording'])
-big_arts.index = pandas.MultiIndex.from_frame(idx)
-big_arts = big_arts.reorder_levels(
-    ['date', 'mouse', 'speaker_side', 'recording', 'channel', 'label']
-    ).sort_index()
+if PLOT_POSITIVE_AND_NEGATIVE_CLICKS:
+    # Plot the corresponding trial averaged ABR
+    trial_averaged_abr = big_triggered_neural2.loc[
+        datetime.date(2025, 5, 20)].loc['Cat_229'].loc[10].xs(
+        'RV', level='channel').droplevel('speaker_side')
 
-
-## Further aggregate over recordings within an experiment
-# Average recordings together where everything else is the same
-big_abrs = big_abrs.groupby(
-    ['date', 'mouse', 'recording', 'channel', 'speaker_side', 'label']).mean()
+    # Slice out loudest only
+    trial_averaged_abr = trial_averaged_abr.xs(91, level='label')
+    
+    # Aggregate
+    trial_averaged_abr = trial_averaged_abr.groupby('polarity').mean()
+    
+    # Plot
+    f, ax = plt.subplots(figsize=(4, 2.5))
+    f.subplots_adjust(bottom=.24, left=.15, right=.95, top=.89)
+    ax.plot(
+        trial_averaged_abr.columns.values / 16e3 * 1000,
+        trial_averaged_abr.loc[True] * 1e6, 
+        color='k', lw=1)
+    ax.plot(
+        trial_averaged_abr.columns.values / 16e3 * 1000,
+        trial_averaged_abr.loc[False] * 1e6, 
+        color='k', lw=1, ls='--')
+    ax.set_xlabel('time from sound (ms)')
+    ax.set_ylabel('ABR (uV)')
+    ax.set_yticks((-6, 0, 6))
+    ax.set_ylim((-6, 6))
+    ax.set_xlim((-2.5, 7.5))
+    ax.set_xticks((-2, 0, 2, 4, 6, ))
+    my.plot.despine(ax)
+    
+    # Plot the stimulus
+    ax.plot([0, 0.1], [5.5, 5.5], 'k-', lw=3)
+    
+    
+    f.savefig('PLOT_POSITIVE_AND_NEGATIVE_CLICKS.svg')
+    f.savefig('PLOT_POSITIVE_AND_NEGATIVE_CLICKS.png', dpi=300)
 
 
 ## Store
