@@ -54,11 +54,6 @@ big_abrs = pandas.read_pickle(
 sampling_rate = 16000  # TODO: store in recording_metadata
 
 
-## Load previous results
-big_abrs = pandas.read_pickle(
-    os.path.join(output_directory, 'big_abrs'))
-
-
 ## Aggregate over recordings for each ABR
 # TODO: do this upstream
 avged_abrs = big_abrs.groupby(
@@ -77,6 +72,51 @@ avged_abrs = avged_abrs.loc[False]
 # Calculate the grand average (averaging out date and mouse)
 grand_average = avged_abrs.groupby(
     [lev for lev in avged_abrs.index.names if lev not in ['date', 'mouse']]).mean()
+
+
+## Cross-correlate over level to measure delay
+rec_l = []
+rec_keys_l = []
+for (date, mouse, speaker_side, channel), subdf in avged_abrs.groupby(
+        ['date', 'mouse', 'speaker_side', 'channel']):
+    
+    # Droplevel, leaving only label
+    subdf = subdf.droplevel(['date', 'mouse', 'speaker_side', 'channel'])
+    
+    # Correlate each with the loudest
+    for level in subdf.index:
+        # Slice and convert to uV
+        x1 = subdf.loc[level] * 1e6
+        x2 = subdf.loc[91] * 1e6
+        
+        # Xcorr
+        # TODO: confirm that positive delays means x1 lags x2
+        counts, corrn = my.misc.correlate(x1, x2, mode='same')
+        
+        # Minimized noise by looking for values in expected range
+        keep_mask = np.abs(corrn) <= 12
+        counts = counts[keep_mask]
+        corrn = corrn[keep_mask]
+
+        # Find peak
+        peak_idx = corrn[counts.argmax()]
+        peak_val = counts.max()
+        
+        # Normalize
+        # Max achievable peak_val is max_val * norm(x1)
+        # If x1 == x2, max achievable is max_val ** 2
+        # Typicall x1 will be less than x2
+        max_val = np.sqrt(np.sum(x2 ** 2))
+        
+        # Store
+        rec_l.append((peak_idx, peak_val, max_val))
+        rec_keys_l.append((date, mouse, speaker_side, channel, level))
+
+# Concat
+midx = pandas.MultiIndex.from_tuples(
+    rec_keys_l, names=['date', 'mouse', 'speaker_side', 'channel', 'level'])
+corr_df = pandas.DataFrame(
+    rec_l, columns=['idx', 'val', 'max'], index=midx)
 
 
 ## Plots
