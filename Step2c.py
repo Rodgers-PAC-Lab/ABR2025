@@ -101,6 +101,10 @@ if BASELINE_VS_N_TRIALS:
     # Take the trial count as the median over levels
     med_trial_count = trial_counts.unstack('label').median(axis=1)
 
+    # Concat these two so they line up
+    joined = med_trial_count.rename(
+        'trial_count').to_frame().join(noise_by_config.rename('noise'))
+
     # Take the evoked signal by level
     evoked_by_level = big_abr_evoked_rms.median()
 
@@ -108,8 +112,8 @@ if BASELINE_VS_N_TRIALS:
 
     f, ax = my.plot.figure_1x1_standard()
     ax.plot(
-        np.log10(med_trial_count), 
-        np.log10(noise_by_config * 1e9), 
+        np.log10(joined['trial_count']), 
+        np.log10(joined['noise'] * 1e9), 
         color='k', marker='o', mfc='none', ls='none', alpha=.3)
 
     ax.set_xticks((1.5, 2, 2.5))
