@@ -1,5 +1,10 @@
-## Grand average cohort plots for a 'normal' cohort where there's not any
-# dramatic differences to compare like HL or FAD status or whatever
+## Plots of the "grand average" over all mouse * date (pre-HL only)
+# Plots
+#   GRAND_AVG_ABR_PLOT
+#   GRAND_AVG_IMSHOW
+#   GRAND_AVG_IPSI_VS_CONTRA 
+#   GRAND_AVG_LR_LEFT_VS_RIGHT
+#   GRAND_AVG_ONE_SIDE_ONLY 
 
 import os
 import datetime
