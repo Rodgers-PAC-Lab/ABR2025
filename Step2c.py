@@ -113,18 +113,18 @@ if BASELINE_VS_N_TRIALS:
     f, ax = my.plot.figure_1x1_standard()
     ax.plot(
         np.log10(joined['trial_count']), 
-        np.log10(joined['noise'] * 1e9), 
+        np.log10(joined['noise'] * 1e9), # log(nV)
         color='k', marker='o', mfc='none', ls='none', alpha=.3)
 
     ax.set_xticks((1.5, 2, 2.5))
     ax.set_xticklabels((30, 100, 300))
-    ax.set_yticks((1.5, 2, 2.5))
-    ax.set_yticklabels((30, 100, 300))
+    ax.set_yticks((1.5, 2, 2.5)) # log(nV)
+    ax.set_yticklabels((0.03, 0.1, 0.3))
+    ax.axis('scaled')
     ax.set_ylim((1.4, 2.6))
     ax.set_xlim((1.2, 2.7))
-    ax.axis('scaled')
-    ax.set_ylabel('RMS of baseline\nin trial average (nV)')
-    ax.set_xlabel('number of trials per sound level')
+    ax.set_ylabel('RMS of baseline\nin trial average (uV)')
+    ax.set_xlabel('number of trials')
 
     my.plot.despine(ax)
     #~ for label, evoked in evoked_by_level[:3].items():
