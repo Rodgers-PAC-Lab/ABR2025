@@ -16,77 +16,61 @@ import matplotlib.pyplot as plt
 import seaborn
 
 
+## Plots
+my.plot.manuscript_defaults()
 my.plot.font_embed()
 
 
+## Paths
+# Load the required file filepaths.json (see README)
+with open('filepaths.json') as fi:
+    paths = json.load(fi)
+
+# Parse into paths to raw data and output directory
+raw_data_directory = paths['raw_data_directory']
+output_directory = paths['output_directory']
 
 
+## Load previous results
+# Load results of Step1
+mouse_metadata = pandas.read_pickle(
+    os.path.join(output_directory, 'mouse_metadata'))
+experiment_metadata = pandas.read_pickle(
+    os.path.join(output_directory, 'experiment_metadata'))
+recording_metadata = pandas.read_pickle(
+    os.path.join(output_directory, 'recording_metadata'))
+
+# Load results of Step2
+big_abrs = pandas.read_pickle(
+    os.path.join(output_directory, 'big_abrs'))
+    
 
 ## Params
 sampling_rate = 16000  # TODO: store in recording_metadata
-
-## Cohort Analysis' Information
-datestring = '250630'
-day_directory = "_cohort"
 loudest_dB = 91
 
-# Tenatative because I'm blinded, but come on it's obvious
-sham_mouse_l = ['Cat_227', 'Cat_228']
-bilateral_mouse_l = ['Cat_226', 'Cat_229']
 
-## Paths
-GUIdata_directory, Pickle_directory = (paclab.abr.loading.get_ABR_data_paths())
-cohort_name = datestring + day_directory
-# Use cohort pickle directory
-cohort_pickle_directory = os.path.join(Pickle_directory, cohort_name)
-if not os.path.exists(cohort_pickle_directory):
-    try:
-        os.mkdir(cohort_pickle_directory)
-    except:
-        print("No pickle directory exists and this script doesn't have permission to create one.")
-        print("Check your Pickle_directory file path.")
-
-## Load results of Step1
-cohort_experiments = pandas.read_pickle(
-    os.path.join(cohort_pickle_directory, 'cohort_experiments'))
-recording_metadata = pandas.read_pickle(
-    os.path.join(cohort_pickle_directory, 'recording_metadata'))
-# Fillna
-cohort_experiments['HL'] = cohort_experiments['HL'].fillna('none')
-
-# Drop those with 'include' == False
-recording_metadata = recording_metadata[recording_metadata['include'] == True]
-
-## Load results of Step2
-big_triggered_neural = pandas.read_pickle(
-    os.path.join(cohort_pickle_directory, 'big_triggered_neural'))
-big_abrs = pandas.read_pickle(
-    os.path.join(cohort_pickle_directory, 'big_abrs'))
-threshold_db = pandas.read_pickle(
-    os.path.join(cohort_pickle_directory, 'thresholds'))
-
-
-# Add timepoint to big_abrs
-big_abrs = big_abrs.join(cohort_experiments.set_index(['date','mouse'])['timepoint'],
-              on=(['date','mouse']))
-big_abrs['laterality'] = [
-    paclab.abr.abr_analysis.laterality_check(i_channel, i_speaker) for i_channel, i_speaker in zip(
-        big_abrs.index.get_level_values('channel'),
-        big_abrs.index.get_level_values('speaker_side'))
-]
-big_abrs['laterality'] = big_abrs['laterality'].fillna('LR')
-big_abrs = big_abrs.reset_index()
-big_abrs['config'] = big_abrs['channel']+big_abrs['speaker_side']
-big_abrs = big_abrs.set_index(['date','mouse','timepoint','recording',
-        'config', 'laterality', 'channel','speaker_side','label'])
-
-
+## Aggregate over recordings for each ABR
+# TODO: do this upstream
 averaged_abrs = big_abrs.groupby(
-    [lev for lev in big_abrs.index.names if lev != 'recording']
-    ).mean()
+    [lev for lev in big_abrs.index.names if lev != 'recording']).mean()
 
-## Consistent t, used throughout
+# Join after_HL on avged_abrs
+averaged_abrs = my.misc.join_level_onto_index(
+    averaged_abrs, 
+    experiment_metadata.set_index(['mouse', 'date'])['after_HL'], 
+    join_on=['mouse', 'date']
+    )
+
+# Keep only after_HL == False
+averaged_abrs = averaged_abrs.loc[False]
+
+
+## Pick peaks
+# Consistent t, used throughout
 t = big_abrs.columns / sampling_rate * 1000
+
+# Pick peaks for loudest sound only
 loudest = averaged_abrs.xs(loudest_dB, level='label')
 
 # Find peaks for each
@@ -95,7 +79,6 @@ peak_params_keys_l = []
 for idx in loudest.index:
     # Slice
     topl = loudest.loc[idx] * 1e6
-    # topl = topl.loc[idx]
 
     # See notes in identify_click_times about how find_peaks works
     fp_kwargs = {
@@ -140,10 +123,10 @@ for idx in loudest.index:
 # Concat
 big_peak_df = pandas.concat(
     peak_params_l, keys=peak_params_keys_l, names=loudest.index.names,
-).sort_index()
+    ).sort_index()
 
-## Parameterize the primary peak
-# Invert the sign for the LR-R recordings
+
+## Invert the sign for the LR-R recordings, so that primary peak is always neg
 to_invert = big_peak_df.loc[
     (big_peak_df.index.get_level_values('speaker_side') == 'R') &
     (big_peak_df.index.get_level_values('channel') == 'LR')
@@ -155,133 +138,114 @@ to_invert['prom'] *= -1
 to_invert['val'] *= -1
 
 # Re-concat
-big_peak_df_rect = pandas.concat([to_invert, to_not_invert]).sort_index()
-
-big_rect_pks_config = big_peak_df_rect.reset_index().drop(columns='date')
-
-## Find the most negative peak
-# The most positive peak is more variable
-# Using prominence is more variable than value
-most_negative = big_rect_pks_config.sort_values('val').groupby(
-    ['timepoint', 'mouse', 'config', 'laterality']).first()
-most_negative = most_negative.sort_values('speaker_side')
-
-# most_negative picks a few peaks that, based on their latency, are clearly wrong.
-# Get rid of these.
-error_pks = [most_negative.loc[most_negative['t']>2.4].loc[most_negative['channel']=='LR']]
-error_pks.append(most_negative.loc[most_negative['t']>2].loc[most_negative['channel']!='LR'])
-error_pks = pandas.concat(error_pks)
-# Go ahead and get ABR waveform of these to plot them tho
-error_pks_ABRs = error_pks.reset_index().set_index(
-    ['mouse', 'timepoint', 'config', 'laterality', 'channel', 'speaker_side'])
-error_pks_ABRs = error_pks_ABRs.join(
-    loudest.droplevel('date',axis=0),on=error_pks_ABRs.index.names,how='left')
-most_negative = most_negative.loc[~most_negative.index.isin(error_pks.index)]
-
-# Chris' names
-PLOT_DELAY_VS_LEVEL = False
-PLOT_DIVERSITY_LOUDEST = False
-PLOT_ABR_POWER_VS_LEVEL_ALL_MICE = False
+big_peak_df = pandas.concat([to_invert, to_not_invert]).sort_index()
 
 
+## Find the primary peak
+# Drop any peak in LR after 2.4 ms, or in the other channels after 2.0 ms
+# Without dropping, here are the violations
+"""
+                                           idx      prom  typ       val       t
+date       mouse     channel speaker_side                          
+2025-06-06 Cacti_223 LR      R              81 -2.068464  pos -1.423620  2.5625
+2025-04-30 Pearl_189 RV      R              74 -2.621651  neg -2.048181  2.1250
+2025-05-02 Cacti_1   RV      R              75 -4.300674  neg -2.523503  2.1875
+2025-04-30 Pearl_189 LV      R              92 -2.444802  neg -1.490880  3.2500
+"""
+drop_mask1 = (
+    (big_peak_df.index.get_level_values('channel') == 'LR') & 
+    (big_peak_df['t'] > 2.4)
+    )
+drop_mask2 = (
+    (big_peak_df.index.get_level_values('channel') != 'LR') & 
+    (big_peak_df['t'] > 2)
+    )
 
-mouse_l = big_abrs.index.get_level_values('mouse').unique()
-font_size = 14
+big_peak_df_filtered = big_peak_df.loc[~drop_mask1 & ~drop_mask2]
 
-# My plot names
-PLOT_ERROR_PKS = False
+# Choose the primary peak
+# `first()` means we choose the most negative, which is more consistent
+# 'val' tends to be more consistent than 'prom'
+primary_peak = big_peak_df_filtered.sort_values('val').groupby(
+    [lev for lev in big_peak_df.index.names if lev != 'n_pk']
+    ).first()
 
-PEAK_HT_BY_CONFIG = False
-PEAK_LATENCY_BY_CONFIG = False
+
+## Plots
+STRIP_PLOT_PEAK_HEIGHT = True
+STRIP_PLOT_PEAK_LATENCY = True
 PEAK_HT_BY_LAT = False
 PEAK_LATENCY_BY_LAT = False
 PLOT_LOUDEST_PKS = False
-PLOT_RAWTRIALS_ALIGNED = False
-
 PLOT_ABR_RMS_OVER_TIME = False
-PLOT_PSD = True
 
-if PLOT_ERROR_PKS:
-    f, axa = my.plot.auto_subplot(len(error_pks))
-    f.subplots_adjust(hspace=0.3)
-    gobj = error_pks_ABRs.groupby(['mouse', 'timepoint', 'config'])
-    i = 0
-    for (mouse, timepoint, config), subdf in gobj:
-        ax = axa.flatten()[i]
-        subdf = subdf
-        ax.plot((1e6 * subdf.iloc[:, 6:]).T)
-        pk_x = int(subdf['idx'].values[0]) - 40
-        if config == 'LRR':
-            pk_y = -subdf['val']
-        else:
-            pk_y = subdf['val']
-        ax.plot(pk_x, pk_y, marker='.')
-        ax.set_title(mouse+' '+timepoint+' '+config)
-        i += 1
-    savename = 'error_peaks_plotted'
-    f.savefig(os.path.join(cohort_pickle_directory, savename + '.svg'))
-    f.savefig(os.path.join(cohort_pickle_directory, savename + '.png'), dpi=300)
 
-if PEAK_HT_BY_CONFIG:
-    # Plot distribution of primary peak heights
+if STRIP_PLOT_PEAK_HEIGHT:
+    ## Plot distribution of primary peak heights
+    # TODO: plot as connected pairs
+    # TODO: stats
+    # Create figure handles
+    f, ax = my.plot.figure_1x1_standard()
+    
+    # Swarmplot
+    swarm = seaborn.stripplot(
+        primary_peak, 
+        x='channel', 
+        y='val', 
+        hue='speaker_side', 
+        marker="$\circ$",
+        alpha=0.5,
+        hue_order=['L', 'R'], 
+        ax=ax, 
+        dodge=True, 
+        legend=False,
+        palette={'L': 'b', 'R': 'r'},
+        )
 
-    # Histogram the time at which this occurs
-    f, ax = plt.subplots(figsize=(5.2, 3))
-    f.subplots_adjust(left=.16, bottom=.17, right=.71,top=0.98)
-    f.set_gid('Pk_ht_by_config')
-    box = seaborn.boxplot(most_negative, x='channel', y='val', hue='speaker_side', hue_order=['L','R'],
-                          fill=False, showfliers=False, legend=False, ax=ax)
-    swarm = seaborn.swarmplot(most_negative, x='channel', y='val', hue='speaker_side', hue_order=['L','R'],
-                              ax=ax, dodge=True, legend=False)
-    handles_l = [
-        matplotlib.lines.Line2D([], [], color=seaborn.color_palette()[0],
-                linewidth=2, label='Left speaker'),
-        matplotlib.lines.Line2D([], [], color=seaborn.color_palette()[1],
-                linewidth=2, label='Right speaker')
-    ]
-    fig_leg = f.legend(handles=handles_l, loc='upper left', bbox_to_anchor=(0.68, 0.6),
-                       handlelength=1, handletextpad=0.5, fontsize=font_size, frameon=False)
-    fig_leg.set_gid('legend')
     # Pretty
-    ax.tick_params(labelsize=font_size)
-    ax.set_ylabel('primary peak\nheight (uV)', fontsize=font_size)
-    # ax.set_xlabel('')
-    ax.set_xlabel('channel', fontsize=font_size)
+    ax.set_ylim((0, -6))
+    ax.set_yticks((0, -3, -6))
+    ax.set_ylabel('height of primary peak (uV)')
+    ax.set_xlabel('channel')
     my.plot.despine(ax)
-    # Savefig
-    savename = 'PEAK_HT_BY_CONFIG'
-    f.savefig(os.path.join(cohort_pickle_directory, savename + '.svg'))
-    f.savefig(os.path.join(cohort_pickle_directory, savename + '.png'), dpi=300)
-if PEAK_LATENCY_BY_CONFIG:
-    # Plot distribution of primary peak heights
 
-    # Histogram the time at which this occurs
-    f, ax = plt.subplots(figsize=(5.2, 3))
-    f.subplots_adjust(left=.16, bottom=.17, right=.71,top=0.98)
-    f.set_gid('Pk_latency_by_config')
-    box = seaborn.boxplot(most_negative, x='channel', y='t', hue='speaker_side', hue_order=['L','R'],
-                          fill=False, showfliers=False, legend=False, ax=ax)
-    swarm = seaborn.swarmplot(most_negative, x='channel', y='t', hue='speaker_side', hue_order=['L','R'],
-                              ax=ax, dodge=True, legend=False)
-    handles_l = [
-        matplotlib.lines.Line2D([], [], color=seaborn.color_palette()[0],
-                linewidth=2, label='Left speaker'),
-        matplotlib.lines.Line2D([], [], color=seaborn.color_palette()[1],
-                linewidth=2, label='Right speaker')
-    ]
-    fig_leg = f.legend(handles=handles_l, loc='upper left', bbox_to_anchor=(0.68, 0.6),
-                       handlelength=1, handletextpad=0.5, fontsize=font_size, frameon=False)
-    fig_leg.set_gid('legend')
-    # Pretty
-    ax.tick_params(labelsize=font_size)
-    ax.set_ylabel('primary peak\nlatency (ms)', fontsize=font_size)
-    # ax.set_xlabel('')
-    ax.set_xlabel('channel', fontsize=font_size)
-    my.plot.despine(ax)
     # Savefig
-    savename = 'PEAK_LATENCY_BY_CONFIG'
-    f.savefig(os.path.join(cohort_pickle_directory, savename + '.svg'))
-    f.savefig(os.path.join(cohort_pickle_directory, savename + '.png'), dpi=300)
+    savename = 'STRIP_PLOT_PEAK_HEIGHT'
+    f.savefig(os.path.join(output_directory, savename + '.svg'))
+    f.savefig(os.path.join(output_directory, savename + '.png'), dpi=300)
+
+if STRIP_PLOT_PEAK_LATENCY:
+    ## Plot distribution of primary peak latencies by channel and speaker_side
+    # Create figure handles
+    f, ax = my.plot.figure_1x1_standard()
+    
+    # Swarmplot
+    # https://stackoverflow.com/questions/66404883/seaborn-scatterplot-set-hollow-markers-instead-of-filled-markers
+    swarm = seaborn.stripplot(
+        primary_peak, 
+        x='channel', 
+        y='t', 
+        hue='speaker_side', 
+        marker="$\circ$",
+        alpha=0.5,
+        hue_order=['L', 'R'], 
+        ax=ax, 
+        dodge=True, 
+        legend=False,
+        palette={'L': 'b', 'R': 'r'},
+        )
+    
+    # Pretty
+    ax.set_ylim((0, 3))
+    ax.set_yticks((0, 1, 2, 3))
+    ax.set_ylabel('latency to primary peak (ms)')
+    ax.set_xlabel('channel')
+    my.plot.despine(ax)
+
+    # Savefig
+    savename = 'STRIP_PLOT_PEAK_LATENCY'
+    f.savefig(os.path.join(output_directory, savename + '.svg'))
+    f.savefig(os.path.join(output_directory, savename + '.png'), dpi=300)
 
 if PLOT_LOUDEST_PKS:
     ## Plot the loudest sounds only, to show diversity
@@ -342,28 +306,8 @@ if PLOT_LOUDEST_PKS:
     f.savefig(os.path.join(cohort_pickle_directory, savename + '.svg'))
     f.savefig(os.path.join(cohort_pickle_directory, savename + '.png'), dpi=300)
 
-if PLOT_RAWTRIALS_ALIGNED:
-    # Set t
-    t = big_abrs.columns / sampling_rate * 1000
-    raw_aligned = big_triggered_neural.copy()
-    raw_aligned.index = raw_aligned.index.reorder_levels(['channel', 'date', 'mouse', 'recording', 'label', 'polarity', 't_samples'])
-    # Only take LV and RV so you don't have any stupid LRR inverting to worry about
-    raw_aligned = raw_aligned.loc[['LV','RV']].xs(loudest_dB,axis=0,level='label')
-    f,ax = plt.subplots(figsize=(5,3))
-    f.subplots_adjust(top=0.99, bottom=0.16, right=0.98)
-    # Take 300 random trials to plot
-    ax.plot(t,(raw_aligned.sample(300)*1e6).T, alpha=0.4)
-    ax.set_xlim(-1,6)
-    ax.set_ylim(-10,10)
-    ax.set_xlabel('time (ms)', fontsize=font_size, labelpad=-1)
-    ax.set_ylabel('ABR (uV)', fontsize=font_size,labelpad=-8)
-    my.plot.despine(ax)
-    ax.tick_params(labelsize=font_size)
 
-    savename = 'PLOT_RAWTRIALS_ALIGNED'
-    f.savefig(os.path.join(cohort_pickle_directory, savename + '.svg'))
-    f.savefig(os.path.join(cohort_pickle_directory, savename + '.png'), dpi=300)
-
+## TODO: move this to a threshold script
 if PLOT_ABR_RMS_OVER_TIME:
     # Plot the smoothed rms of the ABR over time by condition
 
@@ -468,7 +412,3 @@ if PLOT_ABR_RMS_OVER_TIME:
                            'PLOT_ABR_RMS_OVER_TIME.svg'))
     f.savefig(os.path.join(cohort_pickle_directory,
                            'PLOT_ABR_RMS_OVER_TIME.png'), dpi=300)
-
-
-if PLOT_PSD:
-    print("hey idk what I'm doing yet lol")
