@@ -93,7 +93,7 @@ for (date, mouse, speaker_side, channel), subdf in avged_abrs.groupby(
         # TODO: confirm that positive delays means x1 lags x2
         counts, corrn = my.misc.correlate(x1, x2, mode='same')
         
-        # Minimized noise by looking for values in expected range
+        # Minimize noise by looking for values in expected range (<0.75 ms)
         keep_mask = np.abs(corrn) <= 12
         counts = counts[keep_mask]
         corrn = corrn[keep_mask]
@@ -118,13 +118,75 @@ midx = pandas.MultiIndex.from_tuples(
 corr_df = pandas.DataFrame(
     rec_l, columns=['idx', 'val', 'max'], index=midx)
 
+# Norm
+# 1 is achieved with equality
+# 0 is achieved with very low-power signal
+# Almost all are intermediate
+corr_df['norm'] = corr_df['val'] / corr_df['max'] ** 2
+
+# The delays become highly variable (random) for the lower levels
+# Dropping delays with low 'norm' introduces strange selection effects
+# Better to just give up on lowest levels
+corr_df = corr_df[corr_df.index.get_level_values('level') >= 52]
+
+## Cross-correlate within and between mice to measure consistency
+# Get date * mouse on the rows
+unstacked = avged_abrs.unstack(
+    ['channel', 'speaker_side', 'label']).reorder_levels(
+    ['mouse', 'date']).sort_index()
+
+# Include only mice with multiple sessions
+sessions_per_mouse = unstacked.groupby('mouse').size()
+assert sessions_per_mouse.max() == 2
+mice_with_multiple_sessions = sorted(
+    sessions_per_mouse.index[sessions_per_mouse == 2])
+unstacked = unstacked.reindex(mice_with_multiple_sessions, level='mouse')
+
+#~ # Keep only the loudest sound, frome teimpoints 0-80 (5 ms)
+#~ unstacked = unstacked.xs(91, level='label', axis=1).loc[:, 0:79]
+
+# Correlate each row
+corr_across_sessions = unstacked.T.corr()
+
+# Null the self-comparisons and redundant comparisons
+null_mask = np.tri(len(unstacked)).astype(bool)
+corr_across_sessions.values[null_mask] = np.nan
+
+# Relabel the columns, fully stack, and reset index
+corr_across_sessions.columns.names = ['mouse2', 'date2']
+corr_across_sessions = corr_across_sessions.stack(
+    future_stack=True).stack(future_stack=True).rename('corr')
+corr_across_sessions = corr_across_sessions.reset_index()
+
+# Drop nulls, including self comparisons
+corr_across_sessions = corr_across_sessions.dropna()
+
+# Label 'within' and 'between'
+within_mask = corr_across_sessions['mouse'] == corr_across_sessions['mouse2']
+corr_across_sessions['typ'] = 'between'
+corr_across_sessions.loc[within_mask, 'typ'] = 'within'
+
+# Plot the distribution
+bins = np.linspace(0, 1, 21)
+f, ax = my.plot.figure_1x1_standard()
+ax.hist(corr_across_sessions.loc[~within_mask, 'corr'], bins=bins, color='green', histtype='step')
+ax.hist(corr_across_sessions.loc[within_mask, 'corr'], bins=bins, color='k', alpha=.5)
+ax.set_xlim((0, 1))
+ax.set_xticks((0, .5, 1))
+ax.set_yticks((0, 3, 6))
+ax.set_xlabel('correlation')
+ax.set_ylabel('# of comparisons')
+my.plot.despine(ax)
+f.text(.2, .8, 'across mice', color='g', ha='center')
+f.text(.2, .7, 'within mouse', color='gray', va='center')
 
 ## Plots
-GRAND_AVG_ABR_PLOT = True
-GRAND_AVG_IMSHOW = True
-GRAND_AVG_IPSI_VS_CONTRA = True
-GRAND_AVG_LR_LEFT_VS_RIGHT = True
-GRAND_AVG_ONE_SIDE_ONLY = True
+GRAND_AVG_ABR_PLOT = False
+GRAND_AVG_IMSHOW = False
+GRAND_AVG_IPSI_VS_CONTRA = False
+GRAND_AVG_LR_LEFT_VS_RIGHT = False
+GRAND_AVG_ONE_SIDE_ONLY = False
+PLOT_DELAY_VS_LEVEL = True
 
 # Define a global t-axis for all plots
 t = avged_abrs.columns / sampling_rate * 1000
@@ -144,7 +206,7 @@ if GRAND_AVG_ABR_PLOT:
         len(label_l), mapname='inferno_r', start=0.15, stop=1)[::-1]
     
     # Make handles
-    f, axa = plt.subplots(3, 2, sharex=True, sharey=True)
+    f, axa = plt.subplots(3, 2, sharex=True, sharey=True, figsize=(5.4, 4))
     f.subplots_adjust(
         left=.1, right=.9, top=.95, bottom=.12, hspace=0.06, wspace=0.2)
 
@@ -219,7 +281,7 @@ if GRAND_AVG_IMSHOW:
     speaker_side_l = ['L', 'R']
 
     # Make handles
-    f, axa = plt.subplots(3, 2, sharex=True, sharey=True, figsize=(6.4, 4.8))
+    f, axa = plt.subplots(3, 2, sharex=True, sharey=True, figsize=(5.4, 4))
     f.subplots_adjust(
         left=.18, right=.98, top=.95, bottom=.12, hspace=0.2, wspace=0.2)
 
@@ -285,7 +347,9 @@ if GRAND_AVG_IMSHOW:
     savename = 'GRAND_AVG_IMSHOW'
     f.savefig(os.path.join(output_directory, savename + '.svg'))
     f.savefig(os.path.join(output_directory, savename + '.png'), dpi=300)
-
+    f_cb.savefig(os.path.join(output_directory, savename + '.colorbar.svg'))
+    f_cb.savefig(os.path.join(output_directory, savename + '.colorbar.png'), dpi=300)
+    
 if GRAND_AVG_IPSI_VS_CONTRA:
     # Get only the loudest sounds
     loudest = grand_average.xs(np.max(label_l), level='label') * 1e6
@@ -393,3 +457,99 @@ if GRAND_AVG_ONE_SIDE_ONLY:
     savename = 'GRAND_AVG_ONE_SIDE_ONLY'
     f.savefig(os.path.join(output_directory, savename + '.svg'))
     f.savefig(os.path.join(output_directory, savename + '.png'), dpi=300)
+
+if PLOT_DELAY_VS_LEVEL:
+    ## Plot the delay versus sound level
+
+    ## Fit a line to the delay vs level
+    # TODO: do this in one shot, by finding a single slope that explains all levels
+    rec_l = []
+    rec_keys_l = []
+    for (date, mouse, speaker_side, channel), subdf in corr_df.groupby(
+            ['date', 'mouse', 'speaker_side', 'channel']):
+        
+        # droplevel
+        subdf = subdf.droplevel(['date', 'mouse', 'speaker_side', 'channel'])
+        
+        # fit
+        # slope units are delay in samples per dB
+        # Multiply by 1000/16 to convert to us / dB
+        # Should be about 7 us / dB, or ~300 us over the tested range
+        fit = scipy.stats.linregress(subdf.index.values, subdf['idx'])
+        
+        # store slope, rval
+        # rval should generally be between -1 and -0.85
+        # slope should be mean -0.11, std 0.02
+        rec_l.append((fit.slope, fit.rvalue))
+        rec_keys_l.append((date, mouse, speaker_side, channel))
+
+    # Concat
+    # The fits are worse for speaker_side R
+    midx = pandas.MultiIndex.from_tuples(
+        rec_keys_l, names=['date', 'mouse', 'speaker_side', 'channel'])
+    slope_df = pandas.DataFrame(
+        rec_l, columns=['slope', 'rval'], index=midx)
+
+    # Mean slope (in samples/dB)
+    slope_by_mouse = slope_df['slope'].groupby('mouse').mean()
+    
+    # Convert to us/dB
+    slope_by_mouse = slope_by_mouse / 16e3 * 1e6
+    
+    # Agg
+    slope_by_mouse_mu = slope_by_mouse.mean()
+    slope_by_mouse_sem = slope_by_mouse.sem()
+    
+    
+    ## Make plot
+    f, ax = my.plot.figure_1x1_standard()
+    
+    # First mean within mouse
+    # This averages over all channels * speaker_side, for better or for worse
+    # LV and RV are closer to linear, LR accelerates more with level, and
+    # has a weird jog at the loudest levels
+    to_agg = corr_df['idx'].groupby(
+        ['mouse', 'level']).mean().unstack('mouse') / 16e3 * 1e3
+    
+    # Now aggregate with mouse as N
+    n_mice = to_agg.shape[1]
+    topl_mu = to_agg.mean(axis=1)
+    topl_err = to_agg.sem(axis=1)
+    ax.plot(topl_mu, color='k')
+    ax.fill_between(
+        x=topl_mu.index,
+        y1=topl_mu - topl_err,
+        y2=topl_mu + topl_err,
+        alpha=.5, lw=0, color='k',
+        )
+
+    # Pretty
+    my.plot.despine(ax)
+    ax.set_xlim((45, 95))
+    ax.set_xticks((50, 70, 90))
+    ax.set_ylim((0, 0.4))
+    ax.set_yticks((0, 0.2, 0.4))
+    
+    # Label
+    ax.set_xlabel('sound level (dB)')
+    ax.set_ylabel('delay (ms)')
+    
+    # Legend
+    ax.text(80, 0.35, f'n = {n_mice} mice', ha='center', va='center')
+    
+    # Save figure
+    savename = 'PLOT_DELAY_VS_LEVEL'
+    f.savefig(os.path.join(output_directory, savename + '.svg'))
+    f.savefig(os.path.join(output_directory, savename + '.png'), dpi=300)
+    
+    # Stats
+    with open('STATS__PLOT_DELAY_VS_LEVEL', 'w') as fi:
+        fi.write('mean over xcorr peak for all channels, speaker sides, and recordings\n')
+        fi.write(f'n = {n_mice} mice\n')
+        fi.write(f'mean slope in us/dB: {slope_by_mouse_mu}\n')
+        fi.write(f'SEM slope in us/dB: {slope_by_mouse_sem}\n')
+    
+    # Echo
+    with open('STATS__PLOT_DELAY_VS_LEVEL') as fi:
+        for line in fi.readlines():
+            print(line.strip())
