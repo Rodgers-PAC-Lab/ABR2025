@@ -127,13 +127,16 @@ big_peak_df = pandas.concat(
 
 
 ## Invert the sign for the LR-R recordings, so that primary peak is always neg
+# Slice LR-R peaks
 to_invert = big_peak_df.loc[
     (big_peak_df.index.get_level_values('speaker_side') == 'R') &
     (big_peak_df.index.get_level_values('channel') == 'LR')
     ].copy()
+
+# Slice the other peaks
 to_not_invert = big_peak_df.drop(to_invert.index).copy()
 
-# Invert, although preserve 'typ'
+# Invert the peak heights in `to_invert`, although preserve 'typ'
 to_invert['prom'] *= -1
 to_invert['val'] *= -1
 
@@ -151,6 +154,10 @@ date       mouse     channel speaker_side
 2025-04-30 Pearl_189 RV      R              74 -2.621651  neg -2.048181  2.1250
 2025-05-02 Cacti_1   RV      R              75 -4.300674  neg -2.523503  2.1875
 2025-04-30 Pearl_189 LV      R              92 -2.444802  neg -1.490880  3.2500
+
+The Cacti_223 recording looks weird. Should we drop it?
+For the vertex ear ones, I think it just happens that the later peaks
+are slightly bigger than the primary one. 
 """
 drop_mask1 = (
     (big_peak_df.index.get_level_values('channel') == 'LR') & 
@@ -172,11 +179,9 @@ primary_peak = big_peak_df_filtered.sort_values('val').groupby(
 
 
 ## Plots
-STRIP_PLOT_PEAK_HEIGHT = True
-STRIP_PLOT_PEAK_LATENCY = True
-PEAK_HT_BY_LAT = False
-PEAK_LATENCY_BY_LAT = False
-PLOT_LOUDEST_PKS = False
+STRIP_PLOT_PEAK_HEIGHT = False
+STRIP_PLOT_PEAK_LATENCY = False
+OVERPLOT_LOUDEST_WITH_PEAKS = True
 PLOT_ABR_RMS_OVER_TIME = False
 
 
@@ -247,64 +252,100 @@ if STRIP_PLOT_PEAK_LATENCY:
     f.savefig(os.path.join(output_directory, savename + '.svg'))
     f.savefig(os.path.join(output_directory, savename + '.png'), dpi=300)
 
-if PLOT_LOUDEST_PKS:
-    ## Plot the loudest sounds only, to show diversity
-    # Note:
-    # Set t
-    t = big_abrs.columns / sampling_rate * 1000
-
-    # One plot per channel
-    channel_l = ['LR','LV', 'RV']
-
-    # Slice mice
-    this_loudest = loudest.loc[:,mouse_l,:]
-
-    # Make plot
+if OVERPLOT_LOUDEST_WITH_PEAKS:
+    ## Plot the ABR to the loudest level, with peaks labeled
+    
+    # Make figure handles. Channels in columns and speaker side on rows
+    channel_l = ['LV', 'RV', 'LR']
+    speaker_side_l = ['L', 'R']
     f, axa = plt.subplots(
-        len(channel_l), 2, sharex=True, sharey=True, figsize=(4.5, 5))
-    f.subplots_adjust(left=.12, right=.98, bottom=.1, top=.97, hspace=.13)
-    this_loudest = this_loudest.droplevel(['date','laterality','timepoint','config'],axis=0)
+        len(channel_l), 
+        len(speaker_side_l),
+        sharex=True, sharey=True, figsize=(5.4, 4))
+    f.subplots_adjust(
+        left=.1, right=.9, top=.95, bottom=.12, hspace=0.06, wspace=0.2)
 
-    gobj = this_loudest.groupby(['channel','speaker_side'])
-    for (channel, speaker_side),subdf in gobj:
-        n_row = channel_l.index(channel)
-        if speaker_side=='L':
-            n_col = 0
-        if speaker_side=='R':
-            n_col = 1
-            # if channel=='LR':
-                # subdf = -subdf
-        ax = axa[n_row,n_col]
-        ax.plot(t, (1e6*subdf.T), lw=.7, alpha=.4, color='k')
+    # Plot each channel * speaker_side
+    gobj = loudest.groupby(['channel', 'speaker_side'])
+    for (channel, speaker_side), subdf in gobj:
+        
+        # Get ax
+        ax = axa[
+            channel_l.index(channel),
+            speaker_side_l.index(speaker_side),
+            ]
 
+        # Plot the ABR
+        ax.plot(t, subdf.T * 1e6, lw=.7, alpha=.4, color='k')
+
+        # Get the corresponding peaks
         this_peaks = big_peak_df.xs(
-            (channel, speaker_side), level=('channel', 'speaker_side'), axis='index')
-        ax.plot(
-            this_peaks[this_peaks['typ'] == 'pos']['t'],
-            this_peaks[this_peaks['typ'] == 'pos']['val'],
-            mec='r', mfc='none', marker='o', ls='none', ms=4)
-        ax.plot(
-            this_peaks[this_peaks['typ'] == 'neg']['t'],
-            this_peaks[this_peaks['typ'] == 'neg']['val'],
-            mec='b', mfc='none', marker='o', ls='none', ms=4)
+            channel, level='channel').xs(
+            speaker_side, level='speaker_side')
+        
+        # Plot the peaks
+        peak_kwargs = {
+            'marker': '.',
+            'ls': 'none',
+            'ms': 4,
+            'alpha': .5,
+            }
+        if channel == 'LR' and speaker_side == 'R':
+            # The peaks are flipped for this one!
+            # Plot the positive peaks
+            ax.plot(
+                this_peaks[this_peaks['typ'] == 'pos']['t'],
+                -this_peaks[this_peaks['typ'] == 'pos']['val'],
+                color='r', **peak_kwargs)
+            
+            # Plot the negative peaks
+            ax.plot(
+                this_peaks[this_peaks['typ'] == 'neg']['t'],
+                -this_peaks[this_peaks['typ'] == 'neg']['val'],
+                color='b', **peak_kwargs)
+        
+        else:
+            # Plot the positive peaks
+            ax.plot(
+                this_peaks[this_peaks['typ'] == 'pos']['t'],
+                this_peaks[this_peaks['typ'] == 'pos']['val'],
+                color='r', **peak_kwargs)
+            
+            # Plot the negative peaks
+            ax.plot(
+                this_peaks[this_peaks['typ'] == 'neg']['t'],
+                this_peaks[this_peaks['typ'] == 'neg']['val'],
+                color='b', **peak_kwargs)
+        
+        # Despine 
+        if ax in axa[-1]:
+            my.plot.despine(ax, which=('left', 'right', 'top'))
+        else:
+            my.plot.despine(ax, which=('left', 'right', 'top', 'bottom'))
 
-        # Title by channel
-        ax.set_title(channel+'_'+speaker_side,fontsize=font_size,y=0.9)
-
-        # Pretty
-        my.plot.despine(ax)
-        ax.tick_params(labelsize=font_size)
-        ax.set_xlim((-0.5, 6))
-        ax.set_xticks((0, 3, 6))
-
-    # Label
-    for ax in axa[2,:]:
-        ax.set_xlabel('time (ms)', fontsize=font_size, labelpad=-1)
-    axa[1,0].set_ylabel('ABR (uV)', fontsize=font_size,labelpad=-8)
+    # Pretty
+    ax.set_xlim((-1, 7))
+    ax.set_ylim((-5, 5))
+    ax.set_xticks([0, 3, 6])
+    ax.set_yticks([])
+    f.text(.51, .01, 'time (ms)', ha='center', va='bottom')
+    
+    # Scale bar
+    axa[0, -1].plot([6, 6], [3, 4], 'k-', lw=.75)
+    axa[0, -1].text(6.2, 3.5, '1 uV', ha='left', va='center', size=12)
+    
+    # Label the channel
+    for n_channel, channel in enumerate(channel_l):
+        axa[n_channel, 0].set_ylabel(channel, labelpad=20)
+    
+    # Label the speaker side
+    axa[0, 0].set_title('sound from left')
+    axa[0, 1].set_title('sound from right')
+    
     # Savefig
-    savename = 'PLOT_LOUDEST_PKS'
-    f.savefig(os.path.join(cohort_pickle_directory, savename + '.svg'))
-    f.savefig(os.path.join(cohort_pickle_directory, savename + '.png'), dpi=300)
+    savename = 'OVERPLOT_LOUDEST_WITH_PEAKS'
+    f.savefig(os.path.join(output_directory, savename + '.svg'))
+    f.savefig(os.path.join(output_directory, savename + '.png'), dpi=300)
 
 
 ## TODO: move this to a threshold script
