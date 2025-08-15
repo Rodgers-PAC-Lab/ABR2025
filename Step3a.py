@@ -252,10 +252,6 @@ if GRAND_AVG_ABR_PLOT:
     ax.set_yticks([])
     f.text(.51, .01, 'time (ms)', ha='center', va='bottom')
 
-    # Legend 
-    aut_colorbar = paclab.abr.abr_plotting.generate_colorbar(
-        len(topl.index), mapname='inferno_r', start=0.15, stop=1)    
-
     # Scale bar
     axa[0, -1].plot([6, 6], [1, 2], 'k-', lw=.75)
     axa[0, -1].text(6.2, 1.5, '1 uV', ha='left', va='center', size=12)

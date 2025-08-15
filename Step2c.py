@@ -13,10 +13,12 @@ import json
 import scipy.signal
 import numpy as np
 import pandas
-from paclab import abr
+import paclab.abr
+import paclab.abr.abr_plotting
 import my.plot
 import matplotlib.pyplot as plt
 import tqdm
+import matplotlib
 
 
 ## Plotting
@@ -46,6 +48,13 @@ trial_counts = pandas.read_pickle(
     os.path.join(output_directory, 'trial_counts'))
 
 
+## TODO: remove post-HL here
+
+
+## Params
+sampling_rate = 16000
+
+
 ## Calculate the stdev(ABR) as a function of level
 # window=20 (1.25 ms) seems the best compromise between smoothing the whole
 # response and localizing it to a reasonably narrow window (and not extending
@@ -71,26 +80,136 @@ big_abr_baseline_rms = big_abr_baseline_rms.median(axis=1)
 # with level, but the variability in log-units is consistent over level.
 big_abr_evoked_rms = big_abr_stds.loc[:, 34].unstack('label')
 
-#~ # Determine threshold crossing as 3*baseline. Note: more averaging will
-#~ # decrease baseline and therefore threshold, as will better noise levels.
-#~ # But this still seems better than a fixed threshold in microvolts.
-#~ # TODO: consider smoothing traces before finding threshold crossing
-#~ over_thresh = big_abr_evoked_rms.T > 3 * big_abr_baseline_rms
-#~ over_thresh = over_thresh.T.stack()
-#~ # threshold
-#~ # typically a bit better on LR even though LR has slightly higher baseline
-#~ threshold_db = over_thresh.loc[over_thresh.values].groupby(
-    #~ ['date', 'mouse', 'recording', 'channel', 'speaker_side']).apply(
-    #~ lambda df: df.index[0][-1])
+# TODO: consider smoothing traces before finding threshold crossing
 
-#~ # reindex to get those that are never above threshold
-#~ threshold_db = threshold_db.reindex(big_abr_baseline_rms.index)
-#~ threshold_db = pandas.DataFrame(threshold_db, columns=['threshold'])
+# Determine threshold crossing as 3*baseline. Note: more averaging will
+# decrease baseline and therefore threshold, as will better noise levels.
+# Update: now using a fixed threshold in uV
+over_thresh = big_abr_evoked_rms.T > 0.3e-6 # 3 * big_abr_baseline_rms
+over_thresh = over_thresh.T.stack()
+
+# threshold
+# typically a bit better on LR even though LR has slightly higher baseline
+threshold_db = over_thresh.loc[over_thresh.values].groupby(
+    ['date', 'mouse', 'recording', 'channel', 'speaker_side']).apply(
+    lambda df: df.index[0][-1])
+
+# reindex to get those that are never above threshold
+threshold_db = threshold_db.reindex(big_abr_baseline_rms.index)
+threshold_db = pandas.DataFrame(threshold_db, columns=['threshold'])
 
 
 ## Plots
-BASELINE_VS_N_TRIALS = True
-HISTOGRAM_EVOKED_RMS_BY_LEVEL = True
+PLOT_ABR_RMS_OVER_TIME = True
+BASELINE_VS_N_TRIALS = False
+HISTOGRAM_EVOKED_RMS_BY_LEVEL = False
+
+if PLOT_ABR_RMS_OVER_TIME:
+    ## Plot the smoothed rms of the ABR over time by condition
+    # Shared t
+    t = big_abrs.columns / sampling_rate * 1000
+
+    # Aggregative over recordings
+    # TODO: consider whether to aggregate over recordings before or after RMS
+    to_agg = big_abr_stds.groupby(
+        ['date', 'mouse', 'speaker_side', 'channel', 'label']).mean()
+
+    # Aggregate over date
+    # TODO: keep just the first session from each mouse instead?
+    to_agg = big_abr_stds.groupby(
+        ['mouse', 'speaker_side', 'channel', 'label']).mean()
+
+    # Make mouse the replicates on the columns
+    to_agg = to_agg.stack().unstack('mouse')
+
+    # Agg
+    # TODO: log10 before agg?
+    agg_mean = to_agg.mean(axis=1).unstack('timepoint')
+    agg_err = to_agg.sem(axis=1).unstack('timepoint')
+
+    # Plot
+    channel_l = ['LV', 'RV', 'LR']
+    speaker_side_l = ['L', 'R']
+
+    # Set up colorbar
+    # Always do the lowest labels last
+    label_l = sorted(
+        agg_mean.index.get_level_values('label').unique(), 
+        reverse=True)
+    aut_colorbar = paclab.abr.abr_plotting.generate_colorbar(
+        len(label_l), mapname='inferno_r', start=0.15, stop=1)[::-1]  
+
+    # Set up ax_rows and ax_cols
+    channel_l = ['LV', 'RV', 'LR']
+    speaker_side_l = ['L', 'R']
+    
+    # Make plot
+    f, axa = plt.subplots(
+        len(channel_l), len(speaker_side_l),
+        sharex=True, sharey=True, figsize=(5, 4))
+    f.subplots_adjust(
+        left=.17, right=.89, top=.95, bottom=.15, hspace=.15, wspace=.12)
+
+    # Plot each channel * speaker_side
+    gobj = agg_mean.groupby(['channel', 'speaker_side'])
+    for (channel, speaker_side), subdf in gobj:
+        
+        # droplevel
+        subdf = subdf.droplevel(
+            ['channel', 'speaker_side']).sort_index(ascending=False)
+
+        # Get ax
+        ax = axa[
+            channel_l.index(channel),
+            speaker_side_l.index(speaker_side),
+        ]
+
+        # Plot each
+        for n_level, level in enumerate(subdf.index):
+            # Get color
+            color = aut_colorbar[label_l.index(level)]
+
+            # Plot in uV
+            ax.plot(t, subdf.loc[level] * 1e6, color=color, lw=1)  
+
+        # Pretty
+        my.plot.despine(ax) 
+        ax.set_yscale('log')
+        ax.set_yticks((0.1, 1.0))
+
+        # Mark the evoked period
+        ax.fill_betweenx(y=(.03, 3), x1=.875, x2=3.375, color='gray', alpha=.25)        
+
+        # Nicer log labels
+        ax.yaxis.set_major_formatter(matplotlib.ticker.ScalarFormatter())
+
+    #~ # Legend
+    #~ for n_label, (label, color) in enumerate(zip(label_l, aut_colorbar)):
+        #~ if np.mod(n_label, 2) != 0:
+            #~ continue
+        #~ f.text(
+            #~ .95, .85 - n_label * .02, f'{label} dB',
+            #~ color=color, ha='center', va='center', size=12)
+
+    # Pretty
+    ax.set_xlim((-2, 8))
+    ax.set_ylim((.03, 3))
+    ax.set_xticks([0, 3, 6])
+    f.text(.51, .01, 'time (ms)', ha='center', va='bottom')
+    f.text(.05, .55, 'rolling RMS of ABR (uV)', rotation=90, ha='center', va='center')
+
+    #~ # Label the channel
+    #~ for n_channel, channel in enumerate(channel_l):
+        #~ axa[n_channel, 0].set_ylabel(channel, labelpad=20)
+    #~ axa[1, 1].set_ylabel
+    
+    # Label the speaker side
+    axa[0, 0].set_title('sound from left')
+    axa[0, 1].set_title('sound from right')
+
+    # Savefig
+    f.savefig(os.path.join(output_directory, 'PLOT_ABR_RMS_OVER_TIME.svg'))
+    f.savefig(os.path.join(output_directory, 'PLOT_ABR_RMS_OVER_TIME.png'), dpi=300)
 
 if BASELINE_VS_N_TRIALS:
     ## Plot the noise level as a function of trial count
