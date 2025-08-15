@@ -38,6 +38,10 @@ output_directory = paths['output_directory']
 
 ## Load previous results
 # Load results of Step1
+mouse_metadata = pandas.read_pickle(
+    os.path.join(output_directory, 'mouse_metadata'))
+experiment_metadata = pandas.read_pickle(
+    os.path.join(output_directory, 'experiment_metadata'))
 recording_metadata = pandas.read_pickle(
     os.path.join(output_directory, 'recording_metadata'))
 
@@ -48,7 +52,20 @@ trial_counts = pandas.read_pickle(
     os.path.join(output_directory, 'trial_counts'))
 
 
-## TODO: remove post-HL here
+## Join after_bilateral_HL on big_abrs
+# Join after_HL onto big_abrs
+big_abrs = my.misc.join_level_onto_index(
+    big_abrs, 
+    experiment_metadata.set_index(['mouse', 'date'])['after_HL'], 
+    join_on=['mouse', 'date']
+    )
+
+# Join HL_type onto big_abrs
+big_abrs = my.misc.join_level_onto_index(
+    big_abrs, 
+    mouse_metadata.set_index('mouse')['HL_type'], 
+    join_on='mouse',
+    )
 
 
 ## Params
@@ -91,7 +108,8 @@ over_thresh = over_thresh.T.stack()
 # threshold
 # typically a bit better on LR even though LR has slightly higher baseline
 threshold_db = over_thresh.loc[over_thresh.values].groupby(
-    ['date', 'mouse', 'recording', 'channel', 'speaker_side']).apply(
+    [lev for lev in over_thresh.index.names if lev != 'label']
+    ).apply(
     lambda df: df.index[0][-1])
 
 # reindex to get those that are never above threshold
@@ -101,23 +119,30 @@ threshold_db = pandas.DataFrame(threshold_db, columns=['threshold'])
 
 ## Plots
 PLOT_ABR_RMS_OVER_TIME = True
-BASELINE_VS_N_TRIALS = False
-HISTOGRAM_EVOKED_RMS_BY_LEVEL = False
+PLOT_ABR_POWER_VS_LEVEL = True
+BASELINE_VS_N_TRIALS = True
+HISTOGRAM_EVOKED_RMS_BY_LEVEL = True
 
 if PLOT_ABR_RMS_OVER_TIME:
     ## Plot the smoothed rms of the ABR over time by condition
     # Shared t
     t = big_abrs.columns / sampling_rate * 1000
 
+    # Slice out pre-HL only
+    this_big_abr_stds = big_abr_stds.xs(
+        False, level='after_HL').droplevel('HL_type')
+
     # Aggregative over recordings
     # TODO: consider whether to aggregate over recordings before or after RMS
-    to_agg = big_abr_stds.groupby(
-        ['date', 'mouse', 'speaker_side', 'channel', 'label']).mean()
+    to_agg = this_big_abr_stds.groupby(
+        [lev for lev in this_big_abr_stds.index.names if lev != 'recording']
+        ).mean()
 
     # Aggregate over date
     # TODO: keep just the first session from each mouse instead?
-    to_agg = big_abr_stds.groupby(
-        ['mouse', 'speaker_side', 'channel', 'label']).mean()
+    to_agg = to_agg.groupby(
+        [lev for lev in to_agg.index.names if lev != 'date']
+        ).mean()
 
     # Make mouse the replicates on the columns
     to_agg = to_agg.stack().unstack('mouse')
@@ -211,6 +236,96 @@ if PLOT_ABR_RMS_OVER_TIME:
     f.savefig(os.path.join(output_directory, 'PLOT_ABR_RMS_OVER_TIME.svg'))
     f.savefig(os.path.join(output_directory, 'PLOT_ABR_RMS_OVER_TIME.png'), dpi=300)
 
+if PLOT_ABR_POWER_VS_LEVEL:
+    ## Plot ABR rms power vs sound level for all mice together
+    """
+    Both the mean and standard deviation of evoked power strongly increase
+    with sound level, suggesting we should take log of power. 
+    On a semilog plot, the variance is similar across level, and evoked
+    power shows diminishing increases with level, not quite plateauing. 
+
+    Mice tended to be shifted up-down on this plot, not left-right, suggesting
+    better recordings in some (electrode closer to source). Normalizing by 
+    baseline power doesn't really change anything.
+
+    A few outlier mice have notably lower evoked power at the higher levels (or
+    perhaps at all levels). Not sure if this was a bad recording or a mouse
+    with hearing loss.
+    """
+    
+    # Slice out pre-HL only
+    this_threshold_db = threshold_db.xs(
+        False, level='after_HL').droplevel('HL_type')
+    this_big_abr_evoked_rms = big_abr_evoked_rms.xs(
+        False, level='after_HL').droplevel('HL_type')
+
+    # Calculate mean threshold per mouse
+    avg_thresh = this_threshold_db.groupby(
+        ['channel', 'speaker_side', 'mouse']).mean()
+    
+    # Set up ax_rows and ax_cols
+    channel_l = ['LV', 'RV', 'LR']
+    speaker_side_l = ['L', 'R']
+    
+    # Make plot
+    f, axa = plt.subplots(
+        len(channel_l), len(speaker_side_l),
+        sharex=True, sharey=True, figsize=(5, 4))
+    f.subplots_adjust(
+        left=.17, right=.89, top=.95, bottom=.15, hspace=.15, wspace=.12)
+
+    # Average and iterate over channel and speaker side configs
+    agged_rms = this_big_abr_evoked_rms.groupby(
+        ['channel', 'speaker_side', 'mouse']).mean()
+    gobj = agged_rms.groupby(['channel','speaker_side'])
+    for (channel, speaker_side), subdf in gobj:
+        
+        # Drop grouping keys
+        subdf = subdf.droplevel(['channel', 'speaker_side'])
+
+        # Get ax
+        ax = axa[
+            channel_l.index(channel),
+            speaker_side_l.index(speaker_side),
+        ]
+
+        # Plot all mice for this config
+        for mouse in subdf.index:
+            mouse_evoked = subdf.loc[mouse].copy()
+            ax.semilogy(mouse_evoked* 1e6,  lw=.75, color='gray', alpha=.6)
+
+            # Get avg threshold
+            mouse_thresh = avg_thresh.loc[channel, speaker_side, mouse].values[0]
+
+            # Round mouse_thresh to nearest actual sound level
+            thresh_diffs = np.abs(mouse_evoked.index - mouse_thresh)
+            lowest_diff_idx = np.argmin(thresh_diffs)
+            near_thresh = mouse_evoked.index[lowest_diff_idx]
+
+            # Plot mouse threshold (rounded)
+            if not pandas.isnull(mouse_thresh):
+                ax.semilogy(
+                    [near_thresh],
+                    [mouse_evoked.loc[near_thresh] * 1e6],
+                    'ro', ms=2.5, alpha=.5)
+
+        # Despine
+        my.plot.despine(ax)
+        ax.set_yticks([0.1, 1])
+        ax.set_xticks([50, 70, 90])
+        ax.yaxis.set_major_formatter(matplotlib.ticker.ScalarFormatter())
+
+    # Axis labels on the bottom
+    for ax in axa[2,:]:
+        ax.set_xlabel('sound level (dB)')
+    axa[1,0].set_ylabel('evoked ABR (uV RMS)')
+    
+    # Savefig
+    f.savefig(os.path.join(output_directory,
+        'PLOT_ABR_POWER_VS_LEVEL_ALL_MICE_semilog.svg'))
+    f.savefig(os.path.join(output_directory,
+        'PLOT_ABR_POWER_VS_LEVEL_ALL_MICE_semilog.png'), dpi=300)
+
 if BASELINE_VS_N_TRIALS:
     ## Plot the noise level as a function of trial count
     
@@ -256,7 +371,8 @@ if BASELINE_VS_N_TRIALS:
 if HISTOGRAM_EVOKED_RMS_BY_LEVEL:
     # Plot a histogram of the evoked signal by level, to aid in choosing
     # a consistent threshold
-    # TODO: remove post-HL sessions
+    # The threshold should be set to be greater than the baseline in 99% 
+    # of recordings, in order to avoid false postives
     
     # Set the bins
     bins = np.linspace(-8, -4, 101)
