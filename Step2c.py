@@ -404,6 +404,11 @@ if PLOT_ABR_POWER_VS_LEVEL_AFTER_HL:
             ax.set_xlabel('sound level (dB)')
         axa[1,0].set_ylabel('evoked ABR (uV RMS)')
         
+        # Savefig
+        savename = f'PLOT_ABR_POWER_VS_LEVEL_AFTER_HL__{HL_type}'
+        f.savefig(savename + '.svg')
+        f.savefig(savename + '.png', dpi=300)        
+        
         
         ## Second plot of threshold
         f, axa = plt.subplots(
