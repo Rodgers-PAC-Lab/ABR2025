@@ -1,4 +1,11 @@
 ## Peak picking plots
+"""
+Makes the following plots:
+
+STRIP_PLOT_PEAK_HEIGHT
+STRIP_PLOT_PEAK_LATENCY
+OVERPLOT_LOUDEST_WITH_PEAKS
+"""
 
 import os
 import datetime
@@ -182,7 +189,6 @@ primary_peak = big_peak_df_filtered.sort_values('val').groupby(
 STRIP_PLOT_PEAK_HEIGHT = False
 STRIP_PLOT_PEAK_LATENCY = False
 OVERPLOT_LOUDEST_WITH_PEAKS = True
-PLOT_ABR_RMS_OVER_TIME = False
 
 
 if STRIP_PLOT_PEAK_HEIGHT:

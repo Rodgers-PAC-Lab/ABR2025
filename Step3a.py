@@ -5,6 +5,7 @@
 #   GRAND_AVG_IPSI_VS_CONTRA 
 #   GRAND_AVG_LR_LEFT_VS_RIGHT
 #   GRAND_AVG_ONE_SIDE_ONLY 
+#   PLOT_DELAY_VS_LEVEL
 
 import os
 import datetime

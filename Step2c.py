@@ -1,8 +1,8 @@
-## Compute thresholds
-# Writes out
-#   thresholds - computed ABR thresholds
-#
+## Computes rms(ABR) over level and thresholds
 # Plots
+#   PLOT_ABR_RMS_OVER_TIME
+#   PLOT_ABR_POWER_VS_LEVEL
+#   PLOT_ABR_POWER_VS_LEVEL_AFTER_HL
 #   BASELINE_VS_N_TRIALS
 #   HISTOGRAM_EVOKED_RMS_BY_LEVEL
 
