@@ -69,7 +69,12 @@ Running the scripts in this directory will reproduce all of the plots in the
 paper. The scripts should be run in the specified order, because some of them
 generate outputs that are needed by later ones. 
 
-TODO: Make sure that all figures are written out to ./figures
+This google sheet keeps track of which scripts generate which figures:
+https://docs.google.com/spreadsheets/d/1OOjzReItH3UJshRRVqz2gxoI22vuh4sFMQ0LG2jgTPE/edit?gid=0#gid=0
+
+TODO: Make sure that all figures are written out to `./figures`
+TODO: replace `from paclab import abr` with `import paclab.abr` throughout
+TODO: remove any unnecessary module imports
 
 ### Step 1
 This step is for loading metadata and choosing what data to include.
