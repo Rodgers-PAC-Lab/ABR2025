@@ -49,12 +49,13 @@ expected_amplitude = [
 ## Load mouse metadata
 # The source data is in the lab google drive -- download to CSVs here
 # The mice in the dataset
+
 mouse_metadata = pandas.read_csv(
-    '2025-07-25 ABR paper metadata - mouse metadata.csv')
+    './metadata/2025-07-25 ABR paper metadata - mouse metadata.csv')
 
 # The experiments in the dataset
 experiment_metadata = pandas.read_csv(
-    '2025-07-25 ABR paper metadata - experiment metadata.csv')
+    './metadata/2025-07-25 ABR paper metadata - experiment metadata.csv')
 
 # Error check for duplicates
 assert not mouse_metadata.duplicated().any()
