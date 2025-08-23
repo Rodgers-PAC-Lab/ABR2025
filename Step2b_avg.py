@@ -36,6 +36,9 @@ output_directory = paths['output_directory']
 abs_max_sigma = 3
 stdev_sigma = 3
 
+# Loudest dB
+loudest_db = 93
+
 
 ## Load previous results
 # Load results of Step1
@@ -126,7 +129,7 @@ if PLOT_SINGLE_TRIAL_ABR:
         'RV', level='channel').droplevel('speaker_side')
 
     # Slice out loudest only
-    single_trial_abr = single_trial_abr.xs(91, level='label')
+    single_trial_abr = single_trial_abr.xs(loudest_db, level='label')
 
     f, ax = plt.subplots(figsize=(4, 2.5))
     f.subplots_adjust(bottom=.24, left=.15, right=.95, top=.89)
@@ -145,8 +148,8 @@ if PLOT_SINGLE_TRIAL_ABR:
     # Plot the stimulus
     ax.plot([0, 0.1], [5.5 / 6 * 8] * 2, 'k-', lw=3)
     
-    f.savefig('PLOT_SINGLE_TRIAL_ABR.svg')
-    f.savefig('PLOT_SINGLE_TRIAL_ABR.png', dpi=300)
+    f.savefig('figures/PLOT_SINGLE_TRIAL_ABR.svg')
+    f.savefig('figures/PLOT_SINGLE_TRIAL_ABR.png', dpi=300)
 
 if PLOT_TRIAL_AVERAGED_ABR:
     # Plot the corresponding trial averaged ABR
@@ -178,8 +181,8 @@ if PLOT_TRIAL_AVERAGED_ABR:
     # Plot the baseline period
     ax.fill_between([-2.5, -1.25], y1=-6, y2=6, color='orange', alpha=0.5)
     
-    f.savefig('PLOT_TRIAL_AVERAGED_ABR.svg')
-    f.savefig('PLOT_TRIAL_AVERAGED_ABR.png', dpi=300)
+    f.savefig('figures/PLOT_TRIAL_AVERAGED_ABR.svg')
+    f.savefig('figures/PLOT_TRIAL_AVERAGED_ABR.png', dpi=300)
 
 if PLOT_POSITIVE_AND_NEGATIVE_CLICKS:
     # Plot the corresponding trial averaged ABR
@@ -188,7 +191,7 @@ if PLOT_POSITIVE_AND_NEGATIVE_CLICKS:
         'RV', level='channel').droplevel('speaker_side')
 
     # Slice out loudest only
-    trial_averaged_abr = trial_averaged_abr.xs(91, level='label')
+    trial_averaged_abr = trial_averaged_abr.xs(loudest_db, level='label')
     
     # Aggregate
     trial_averaged_abr = trial_averaged_abr.groupby('polarity').mean()
@@ -216,8 +219,8 @@ if PLOT_POSITIVE_AND_NEGATIVE_CLICKS:
     ax.plot([0, 0.1], [5.5, 5.5], 'k-', lw=3)
     
     
-    f.savefig('PLOT_POSITIVE_AND_NEGATIVE_CLICKS.svg')
-    f.savefig('PLOT_POSITIVE_AND_NEGATIVE_CLICKS.png', dpi=300)
+    f.savefig('figures/PLOT_POSITIVE_AND_NEGATIVE_CLICKS.svg')
+    f.savefig('figures/PLOT_POSITIVE_AND_NEGATIVE_CLICKS.png', dpi=300)
 
 
 ## Store
