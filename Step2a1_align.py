@@ -1,5 +1,6 @@
 ## Identify and categorize clicks, and slice neural and audio data around them
 # This script takes a while - 12 minutes or so
+# TODO: if including the 250725_cohort, drop the torn recordings (recordings 11 and 16)
 #
 # Writes out the following in the output directory
 #   big_triggered_ad - audio data triggered on clicks
@@ -28,12 +29,6 @@ with open('filepaths.json') as fi:
 # Parse into paths to raw data and output directory
 raw_data_directory = paths['raw_data_directory']
 output_directory = paths['output_directory']
-
-# Put click figures here
-# TODO: bring these figures back, for error checking
-click_data_dir = os.path.join(output_directory, 'click_validation')
-if not os.path.exists(click_data_dir):
-    os.mkdir(click_data_dir)
 
 
 ## Load results of main1
@@ -65,9 +60,8 @@ expected_amplitude = [
 # This 1.34 is empirically determined to align autopilot with measured voltage
 log10_voltage = np.sort(np.log10(expected_amplitude) + 1.34)
 
-# SPL as measured with the fancy microphone
-amplitude_labels = np.array(
-    [49, 51, 54, 58, 61, 65, 69, 73, 77, 81, 85, 88, 91])
+# SPL as measured with the ultrasonic microphone
+amplitude_labels = np.linspace(45, 93, 13).astype(int)
 
 # Convert the voltages to cuts
 amplitude_cuts = (log10_voltage[1:] + log10_voltage[:-1]) / 2
@@ -108,6 +102,12 @@ for date, mouse, recording in tqdm.tqdm(recording_metadata.index):
     neural_data_V = data[:, neural_channel_numbers]
 
 
+    ## Check for glitches
+    # The maximum voltage I ever see in real data is ~0.1 V, and that's only
+    # when there's a substantial DC offset. The demeaned absmax is like ~1 mV.
+    assert np.abs(neural_data_V).max() < 0.3
+    
+    
     ## Identify and categorize clicks
     # Use the least cut as the threshold
     threshold_V = 10 ** amplitude_cuts.min()
