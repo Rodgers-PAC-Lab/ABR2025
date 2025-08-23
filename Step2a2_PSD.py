@@ -52,6 +52,10 @@ keys_l = []
 # Iterate over recordings
 for date, mouse, recording in tqdm.tqdm(recording_metadata.index):
     
+    # TODO: mark these as exclude
+    if date == datetime.date(2025, 3, 10) and mouse == 'Ketchup_208' and recording == 9:
+        continue
+    
     # Get the recording info
     this_recording = recording_metadata.loc[date].loc[mouse].loc[recording]
 
@@ -175,10 +179,10 @@ f.text(.9, .82, 'LV', ha='center', va='center', color='b')
 f.text(.9, .74, 'RV', ha='center', va='center', color='r')
 
 # Save figure
-f.savefig('PSD_BY_CHANNEL.svg')
-f.savefig('PSD_BY_CHANNEL.png', dpi=300)
+f.savefig('figures/PSD_BY_CHANNEL.svg')
+f.savefig('figures/PSD_BY_CHANNEL.png', dpi=300)
 
 # Stats
-with open('STATS__PSD_BY_CHANNEL', 'w') as fi:
+with open('figures/STATS__PSD_BY_CHANNEL', 'w') as fi:
     fi.write('n = {n_recordings} recordings\n')
     fi.write('error bars: standard deviation over recordings\n')
