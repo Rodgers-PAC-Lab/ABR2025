@@ -213,3 +213,7 @@ experiment_metadata.to_pickle(
     os.path.join(output_directory, 'experiment_metadata'))
 recording_metadata.to_pickle(
     os.path.join(output_directory, 'recording_metadata'))
+
+# Output will go here
+if not os.path.exists('figures'):
+    os.mkdir('figures')
