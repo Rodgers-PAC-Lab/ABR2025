@@ -223,6 +223,10 @@ if PLOT_POSITIVE_AND_NEGATIVE_CLICKS:
     f.savefig('figures/PLOT_POSITIVE_AND_NEGATIVE_CLICKS.png', dpi=300)
 
 
+## Show
+plt.show()
+
+
 ## Store
 big_abrs.to_pickle(os.path.join(output_directory, 'big_abrs'))
 trial_counts.to_pickle(os.path.join(output_directory, 'trial_counts'))
