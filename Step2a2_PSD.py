@@ -55,6 +55,8 @@ for date, mouse, recording in tqdm.tqdm(recording_metadata.index):
     # TODO: mark these as exclude
     if date == datetime.date(2025, 3, 10) and mouse == 'Ketchup_208' and recording == 9:
         continue
+    if date == datetime.date(2025, 3, 10) and mouse == 'Ketchup_209' and recording == 5:
+        continue
     
     # Get the recording info
     this_recording = recording_metadata.loc[date].loc[mouse].loc[recording]
