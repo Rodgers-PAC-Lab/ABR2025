@@ -19,6 +19,7 @@ import glob
 import json
 import numpy as np
 import pandas
+import paclab
 from paclab import abr
 import tqdm
 
@@ -47,24 +48,37 @@ expected_amplitude = [
 
 
 ## Load mouse metadata
-# The source data is in the lab google drive -- download to CSVs here
-# The mice in the dataset
+# For convenience now, the google doc is the hot copy: 
+#   https://docs.google.com/spreadsheets/d/1J0AFGFZp5V91GxNgEJvWDqN1v0S22znYZwBFbDCbEes/edit?gid=1105382891#gid=1105382891
+# Before sharing repository, download these as CSV in the ./metadata directory
+# so the user doesn't have to rely on a google doc
 
-mouse_metadata = pandas.read_csv(
-    './metadata/2025-07-25 ABR paper metadata - mouse metadata.csv')
+# The mice in the dataset
+mouse_metadata = paclab.load_gsheet.load(
+    '1J0AFGFZp5V91GxNgEJvWDqN1v0S22znYZwBFbDCbEes', 
+    sheet_name='mouse metadata', normalize_case=False)
 
 # The experiments in the dataset
-experiment_metadata = pandas.read_csv(
-    './metadata/2025-07-25 ABR paper metadata - experiment metadata.csv')
+experiment_metadata = paclab.load_gsheet.load(
+    '1J0AFGFZp5V91GxNgEJvWDqN1v0S22znYZwBFbDCbEes', 
+    sheet_name='experiment metadata', normalize_case=False)
+
+# When exporting to CSV first, datetime-like columns are str
+# Turn the dates into actual datetime dates
+# For compatibility with the code below, force them back into str and drop the
+# time component
+experiment_metadata['date'] = experiment_metadata['date'].apply(
+    lambda ts: str(ts.date()))
+mouse_metadata['DOB'] = mouse_metadata['DOB'].apply(
+    lambda ts: str(ts.date()))
+mouse_metadata['HL_date'] = mouse_metadata['HL_date'].apply(
+    lambda ts: None if pandas.isnull(ts) else str(ts.date()))
 
 # Error check for duplicates
 assert not mouse_metadata.duplicated().any()
 assert not experiment_metadata.duplicated().any()
 
-# Presently, all experiments were done by 'rowan'
-experiment_metadata['experimenter'] = 'rowan'
-
-# Turn the dates into actual datetime dates
+# When downloading directly from google, datetime-like columns are Timestamp
 experiment_metadata['date'] = experiment_metadata['date'].apply(
     lambda x: datetime.datetime.strptime(x, '%Y-%m-%d').date())
 mouse_metadata['DOB'] = mouse_metadata['DOB'].apply(
@@ -122,7 +136,7 @@ experiment_metadata = pandas.concat(subdf_l).sort_index()
 # Load data from every date that is included
 recording_metadata_l = []
 
-for idx in experiment_metadata.index:
+for idx in tqdm.tqdm(experiment_metadata.index):
     # Get the experimenter, date, and mouse
     experimenter, experiment_date, mouse = experiment_metadata.loc[
         idx, ['experimenter', 'date', 'mouse']]
