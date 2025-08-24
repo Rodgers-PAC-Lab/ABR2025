@@ -108,20 +108,24 @@ over_thresh = over_thresh.T.stack()
 # threshold
 # typically a bit better on LR even though LR has slightly higher baseline
 threshold_db = over_thresh.loc[over_thresh.values].groupby(
-    [lev for lev in over_thresh.index.names if lev != 'label']
+    [lev for lev in over_thresh.index.names if lev != 'label'],
+    dropna=False,
     ).apply(
     lambda df: df.index[0][-1])
 
 # reindex to get those that are never above threshold
 threshold_db = threshold_db.reindex(big_abr_baseline_rms.index)
 
+# error check that we always have a threshold
+assert not threshold_db.isnull().any()
+
 
 ## Plots
-PLOT_ABR_RMS_OVER_TIME = False
-PLOT_ABR_POWER_VS_LEVEL = False
-PLOT_ABR_POWER_VS_LEVEL_AFTER_HL = True
-BASELINE_VS_N_TRIALS = False
-HISTOGRAM_EVOKED_RMS_BY_LEVEL = False
+PLOT_ABR_RMS_OVER_TIME = True
+PLOT_ABR_POWER_VS_LEVEL = True
+PLOT_ABR_POWER_VS_LEVEL_AFTER_HL = False
+BASELINE_VS_N_TRIALS = True
+HISTOGRAM_EVOKED_RMS_BY_LEVEL = True
 
 if PLOT_ABR_RMS_OVER_TIME:
     ## Plot the smoothed rms of the ABR over time by condition
@@ -132,8 +136,7 @@ if PLOT_ABR_RMS_OVER_TIME:
     this_big_abr_stds = big_abr_stds.xs(
         False, level='after_HL').droplevel('HL_type')
 
-    # Aggregative over recordings
-    # TODO: consider whether to aggregate over recordings before or after RMS
+    # Aggregate over recordings
     to_agg = this_big_abr_stds.groupby(
         [lev for lev in this_big_abr_stds.index.names if lev != 'recording']
         ).mean()
@@ -182,6 +185,9 @@ if PLOT_ABR_RMS_OVER_TIME:
         # droplevel
         subdf = subdf.droplevel(
             ['channel', 'speaker_side']).sort_index(ascending=False)
+    
+        # get the error bars
+        subdf_err = agg_err.loc[channel].loc[speaker_side]
 
         # Get ax
         ax = axa[
@@ -196,6 +202,12 @@ if PLOT_ABR_RMS_OVER_TIME:
 
             # Plot in uV
             ax.plot(t, subdf.loc[level] * 1e6, color=color, lw=1)  
+            
+            # Error bars
+            ax.fill_between(t, 
+                (subdf.loc[level] - subdf_err.loc[level]) * 1e6,
+                (subdf.loc[level] + subdf_err.loc[level]) * 1e6,
+                color=color, alpha=.5, lw=0)
 
         # Pretty
         my.plot.despine(ax) 
@@ -231,10 +243,21 @@ if PLOT_ABR_RMS_OVER_TIME:
     # Label the speaker side
     axa[0, 0].set_title('sound from left')
     axa[0, 1].set_title('sound from right')
-
+    
     # Savefig
-    f.savefig(os.path.join(output_directory, 'PLOT_ABR_RMS_OVER_TIME.svg'))
-    f.savefig(os.path.join(output_directory, 'PLOT_ABR_RMS_OVER_TIME.png'), dpi=300)
+    f.savefig(os.path.join('figures', 'PLOT_ABR_RMS_OVER_TIME.svg'))
+    f.savefig(os.path.join('figures', 'PLOT_ABR_RMS_OVER_TIME.png'), dpi=300)
+    
+    # Stats
+    stats_filename = 'figures/STATS__PLOT_ABR_RMS_OVER_TIME'
+    with open(stats_filename, 'w') as fi:
+        fi.write(f'n = {to_agg.shape[1]} mice\n')
+        fi.write(
+            'compute rolling RMS for each recording * level, '
+            'then mean over recordings within date, '
+            'then mean over date within mouse, '
+            'then mean and SEM over mice, '
+            'then plot on log scale\n')
 
 if PLOT_ABR_POWER_VS_LEVEL:
     ## Plot ABR rms power vs sound level for all mice together
@@ -285,7 +308,7 @@ if PLOT_ABR_POWER_VS_LEVEL:
             ax.semilogy(mouse_evoked* 1e6,  lw=.75, color='gray', alpha=.6)
 
             # Get avg threshold
-            mouse_thresh = avg_thresh.loc[channel, speaker_side, mouse].values[0]
+            mouse_thresh = avg_thresh.loc[channel].loc[speaker_side].loc[mouse].item()
 
             # Round mouse_thresh to nearest actual sound level
             thresh_diffs = np.abs(mouse_evoked.index - mouse_thresh)
