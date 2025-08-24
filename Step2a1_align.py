@@ -1,6 +1,6 @@
 ## Identify and categorize clicks, and slice neural and audio data around them
 # This script takes a while - 12 minutes or so
-# TODO: if including the 250725_cohort, drop the torn recordings (recordings 11 and 16)
+# Make sure there are no errors about torn recordings or glitches
 #
 # Writes out the following in the output directory
 #   big_triggered_ad - audio data triggered on clicks
