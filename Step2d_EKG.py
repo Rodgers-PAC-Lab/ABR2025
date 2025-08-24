@@ -96,6 +96,16 @@ for date, mouse, recording in tqdm.tqdm(recording_metadata.index):
     # Convert to uV
     ekg_signal = ekg_signal * 1e6
 
+    # Name the channels
+    # TODO: verify this works for Pineapple_197 on 2025-02-12 when it's permuted
+    # This must match the order of neural_channel_numbers
+    ekg_signal = pandas.DataFrame(ekg_signal)
+    ekg_signal.columns = pandas.Index([
+        this_recording.loc['ch0_config'], 
+        this_recording.loc['ch2_config'], 
+        this_recording.loc['ch4_config'], 
+        ], name='channel')
+    
     # Find heartbeats, indexed into ekg_signal
     # 
     # SHAPE OF EKG
@@ -124,7 +134,7 @@ for date, mouse, recording in tqdm.tqdm(recording_metadata.index):
     # So use a wide range of (10, 100) on width
     ekg_threshold = 35 # uV
     peak_times, peak_props = scipy.signal.find_peaks(
-        ekg_signal[:, 0], 
+        ekg_signal.loc[:, 'LR'], 
         height=ekg_threshold, 
         distance=1000,
         prominence=ekg_threshold,
@@ -150,23 +160,21 @@ for date, mouse, recording in tqdm.tqdm(recording_metadata.index):
         1/0
     
     # Extract (n_trials, n_timepoints, 3)
-    sliced_arr = np.array([
-        ekg_signal[peak - slice_halfwidth:peak + slice_halfwidth]
-        for peak in heartbeats['sample']])
+    sliced_l = []
+    for peak in heartbeats['sample']:
+        # Slice
+        sliced = ekg_signal.iloc[
+            peak - slice_halfwidth:peak + slice_halfwidth
+            ]
+        sliced.index = pandas.Index(
+            np.arange(-slice_halfwidth, slice_halfwidth, dtype=int), 
+            name='timepoint')
+        
+        # Store
+        sliced_l.append(sliced)
     
-    # Squeeze into (n_trials, (n_timepoints * 3))
-    sliced_arr = sliced_arr.reshape((len(sliced_arr), -1))
-    
-    # DataFrame it
-    # Index is the same as the heartbeats
-    sliced_df = pandas.DataFrame(sliced_arr, index=heartbeats.index)
-    
-    # Form the columns, taking into account the three channels
-    level0 = pandas.Series(
-        np.arange(-slice_halfwidth, slice_halfwidth, dtype=int), 
-        name='timepoint')
-    level1 = pandas.Series(neural_channel_numbers, name='channel')
-    sliced_df.columns = pandas.MultiIndex.from_product([level0, level1])
+    # Concat
+    sliced_df = pandas.concat(sliced_l, keys=heartbeats.index)
     
     # Store
     heartbeats_l.append(heartbeats)
@@ -182,8 +190,22 @@ beats_df = pandas.concat(
     names=['date', 'mouse', 'recording'])
 
 
-## Mean waveform by session
-mean_by_session = beats_df.groupby(['date', 'mouse', 'recording']).mean()
+## Aggregate
+# Mean waveform over beats within recording
+mean_by_recording = beats_df.groupby(
+    [lev for lev in beats_df.index.names if lev != 'beat']
+    ).mean()
+
+# Mean waveform over recordings within session
+mean_by_session = mean_by_recording.groupby(
+    [lev for lev in mean_by_recording.index.names if lev != 'recording']
+    ).mean()
+
+# Mean waveform over sessions within mouse
+# TODO: check whether there is substantial variability within mouse
+mean_by_mouse = mean_by_session.groupby(
+    [lev for lev in mean_by_session.index.names if lev != 'date']
+    ).mean()
 
 
 ## Summarize waveform shape by session
@@ -197,40 +219,42 @@ stats_by_session['IBI'] = heart_df['sample'].diff().dropna().groupby(
 
 ## Plots
 PLOT_EKG_GRAND_MEAN = True
-PLOT_EKG_SESSION_MEAN = True
+PLOT_EKG_BY_MOUSE = True
 PLOT_EKG_STATS = True
 
 if PLOT_EKG_GRAND_MEAN:
+    # Mean over mouse
+    grand_mean = mean_by_mouse.groupby('timepoint').mean()
+
     # Plot grand mean by channel
     f, ax = my.plot.figure_1x1_standard()
-    grand_mean = mean_by_session.mean().unstack('channel')
     ax.plot(
         grand_mean.index.values / sampling_rate * 1000,
         grand_mean.values,
         )
     ax.set_xlabel('time (ms)')
     ax.set_ylabel('EKG (uV)')
-    ax.legend(['LR', 'LV', 'RV'])
+    #~ ax.legend(['LR', 'LV', 'RV'])
     ax.set_xlim((-15, 15))
     my.plot.despine(ax)
     f.savefig('figures/PLOT_EKG_GRAND_MEAN.svg')
     f.savefig('figures/PLOT_EKG_GRAND_MEAN.png', dpi=300)
 
-if PLOT_EKG_SESSION_MEAN:
-    # Plot LR by session (each channel seems equally variable)
+if PLOT_EKG_BY_MOUSE:
+    # Plot LR by mouse (each channel seems equally variable)
     f, ax = my.plot.figure_1x1_standard()
-    LR_mean = mean_by_session.xs(0, level='channel', axis=1)
-    LR_mean_by_session = LR_mean.groupby(['date', 'mouse', 'recording']).mean()
+    LR_mean = mean_by_mouse.loc[:, 'LR'].unstack('mouse')
+
     ax.plot(
-        LR_mean_by_session.columns.values / sampling_rate * 1000,
-        LR_mean_by_session.T,
+        LR_mean.index.values / sampling_rate * 1000,
+        LR_mean,
         color='k', alpha=.1, lw=1)
     ax.set_xlabel('time (ms)')
     ax.set_xlim((-15, 15))
     ax.set_ylabel('EKG (uV)')
     my.plot.despine(ax)
-    f.savefig('figures/PLOT_EKG_SESSION_MEAN.svg')
-    f.savefig('figures/PLOT_EKG_SESSION_MEAN.png', dpi=300)
+    f.savefig('figures/PLOT_EKG_BY_MOUSE.svg')
+    f.savefig('figures/PLOT_EKG_BY_MOUSE.png', dpi=300)
 
 if PLOT_EKG_STATS:
     # Histogram height, prominence, width, and IBI by session
@@ -261,4 +285,4 @@ plt.show()
 # TODO: Correlate EKG size and evoked ABR size
 heart_df.to_pickle(os.path.join(output_directory, 'EKG_heartbeats'))
 stats_by_session.to_pickle(os.path.join(output_directory, 'EKG_stats'))
-mean_by_session.to_pickle(os.path.join(output_directory, 'EKG_waveform'))
+mean_by_recording.to_pickle(os.path.join(output_directory, 'EKG_waveform'))
