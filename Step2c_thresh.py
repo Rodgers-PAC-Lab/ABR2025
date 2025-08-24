@@ -428,7 +428,7 @@ if PLOT_ABR_POWER_VS_LEVEL_AFTER_HL:
         axa[1,0].set_ylabel('evoked ABR (uV RMS)')
         
         # Savefig
-        savename = f'PLOT_ABR_POWER_VS_LEVEL_AFTER_HL__{HL_type}'
+        savename = f'figures/PLOT_ABR_POWER_VS_LEVEL_AFTER_HL__{HL_type}'
         f.savefig(savename + '.svg')
         f.savefig(savename + '.png', dpi=300)        
         
