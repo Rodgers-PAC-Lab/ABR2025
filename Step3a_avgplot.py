@@ -277,7 +277,7 @@ if GRAND_AVG_ABR_PLOT:
         # Echo
         with open(stats_filename) as fi:
             print(''.join(fi.readlines()))
-        1/0
+
 if GRAND_AVG_IMSHOW:
     ## Plot the grand average ABR as an imshow for each channel * speaker_side
     # Do this in three ways: control, sham, bilateral
