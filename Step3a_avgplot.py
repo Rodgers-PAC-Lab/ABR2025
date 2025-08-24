@@ -38,7 +38,10 @@ output_directory = paths['output_directory']
 
 
 ## Params
-sampling_rate = 16000  # TODO: store in recording_metadata
+sampling_rate = 16000
+
+# Loudest dB
+loudest_db = 93
 
 
 ## Load previous results
@@ -49,6 +52,11 @@ experiment_metadata = pandas.read_pickle(
     os.path.join(output_directory, 'experiment_metadata'))
 recording_metadata = pandas.read_pickle(
     os.path.join(output_directory, 'recording_metadata'))
+
+# Replace np.nan with 'none' in HL_type
+# Otherwise it gets dropped by groupby
+# TODO: do this upstream
+mouse_metadata['HL_type'] = mouse_metadata['HL_type'].fillna('none')
 
 # Load results of Step2
 big_abrs = pandas.read_pickle(
@@ -96,7 +104,7 @@ for (grouped_keys), subdf in averaged_abrs.groupby(grouping_keys):
     for level in subdf.index:
         # Slice and convert to uV
         x1 = subdf.loc[level] * 1e6
-        x2 = subdf.loc[91] * 1e6
+        x2 = subdf.loc[loudest_db] * 1e6
         
         # Xcorr
         # TODO: confirm that positive delays means x1 lags x2
@@ -157,6 +165,7 @@ if GRAND_AVG_ABR_PLOT:
         
         ## Slice data
         if plot_type == 'healthy':
+            # This will include mice that never received HL
             this_averaged_abrs = averaged_abrs.xs(
                 False, level='after_HL').droplevel('HL_type')
         
@@ -172,9 +181,13 @@ if GRAND_AVG_ABR_PLOT:
             1/0
 
         # Calculate the grand average (averaging out date and mouse)
+        # TODO: aggregate first over date and then over mouse
         this_grand_average = this_averaged_abrs.groupby(
             [lev for lev in this_averaged_abrs.index.names if lev not in ['date', 'mouse']]
             ).mean()
+
+        # Count mice
+        n_mice = len(this_averaged_abrs.index.get_level_values('mouse').unique())
         
         
         ## Set up plot
@@ -249,12 +262,22 @@ if GRAND_AVG_ABR_PLOT:
         axa[0, 0].set_title('sound from left')
         axa[0, 1].set_title('sound from right')
         
-        # Save figure
+        
+        ## Save figure
         savename = f'figures/GRAND_AVG_ABR_PLOT__{plot_type}'
-        f.savefig(os.path.join(output_directory, savename + '.svg'))
-        f.savefig(os.path.join(output_directory, savename + '.png'), dpi=300)
+        f.savefig(savename + '.svg')
+        f.savefig(savename + '.png', dpi=300)
 
-
+        
+        ## Stats
+        stats_filename = f'figures/STATS__GRAND_AVG_ABR_PLOT__{plot_type}'
+        with open(stats_filename, 'w') as fi:
+            fi.write(f'n = {n_mice} mice\n')
+        
+        # Echo
+        with open(stats_filename) as fi:
+            print(''.join(fi.readlines()))
+        1/0
 if GRAND_AVG_IMSHOW:
     ## Plot the grand average ABR as an imshow for each channel * speaker_side
     # Do this in three ways: control, sham, bilateral
@@ -350,10 +373,10 @@ if GRAND_AVG_IMSHOW:
 
         # Save figure
         savename = f'figures/GRAND_AVG_IMSHOW__{plot_type}'
-        f.savefig(os.path.join(output_directory, savename + '.svg'))
-        f.savefig(os.path.join(output_directory, savename + '.png'), dpi=300)
-        f_cb.savefig(os.path.join(output_directory, savename + '.colorbar.svg'))
-        f_cb.savefig(os.path.join(output_directory, savename + '.colorbar.png'), dpi=300)
+        f.savefig(savename + '.svg')
+        f.savefig(savename + '.png', dpi=300)
+        f_cb.savefig(savename + '.colorbar.svg')
+        f_cb.savefig(savename + '.colorbar.png', dpi=300)
 
 if GRAND_AVG_IPSI_VS_CONTRA:
     ## Slice data
@@ -367,7 +390,7 @@ if GRAND_AVG_IPSI_VS_CONTRA:
         ).mean()
     
     # Slice loudest sound
-    loudest = this_grand_average.xs(91, level='label') * 1e6
+    loudest = this_grand_average.xs(loudest_db, level='label') * 1e6
 
 
     ## Plot handles
@@ -403,8 +426,8 @@ if GRAND_AVG_IPSI_VS_CONTRA:
     
     # Save figure
     savename = 'figures/GRAND_AVG_IPSI_VS_CONTRA'
-    f.savefig(os.path.join(output_directory, savename + '.svg'))
-    f.savefig(os.path.join(output_directory, savename + '.png'), dpi=300)
+    f.savefig(savename + '.svg')
+    f.savefig(savename + '.png', dpi=300)
 
 if GRAND_AVG_LR_LEFT_VS_RIGHT:
 
@@ -419,7 +442,7 @@ if GRAND_AVG_LR_LEFT_VS_RIGHT:
         ).mean()
     
     # Slice loudest sound
-    loudest = this_grand_average.xs(91, level='label') * 1e6
+    loudest = this_grand_average.xs(loudest_db, level='label') * 1e6
 
     
     ## Set up plot
@@ -449,8 +472,8 @@ if GRAND_AVG_LR_LEFT_VS_RIGHT:
     
     # Save figure
     savename = 'figures/GRAND_AVG_LR_LEFT_VS_RIGHT'
-    f.savefig(os.path.join(output_directory, savename + '.svg'))
-    f.savefig(os.path.join(output_directory, savename + '.png'), dpi=300)
+    f.savefig(savename + '.svg')
+    f.savefig(savename + '.png', dpi=300)
 
 if GRAND_AVG_ONE_SIDE_ONLY:
     # Slice data
@@ -464,7 +487,7 @@ if GRAND_AVG_ONE_SIDE_ONLY:
         ).mean()
     
     # Slice loudest sound
-    loudest = this_grand_average.xs(91, level='label') * 1e6
+    loudest = this_grand_average.xs(loudest_db, level='label') * 1e6
 
     # Plot handles
     f, ax = plt.subplots(figsize=(4.5, 2.5))
@@ -494,8 +517,8 @@ if GRAND_AVG_ONE_SIDE_ONLY:
     
     # Save figure
     savename = 'figures/GRAND_AVG_ONE_SIDE_ONLY'
-    f.savefig(os.path.join(output_directory, savename + '.svg'))
-    f.savefig(os.path.join(output_directory, savename + '.png'), dpi=300)
+    f.savefig(savename + '.svg')
+    f.savefig(savename + '.png', dpi=300)
 
 if PLOT_DELAY_VS_LEVEL:
     ## Plot the delay versus sound level
@@ -585,8 +608,8 @@ if PLOT_DELAY_VS_LEVEL:
     
     ## Save figure
     savename = 'figures/PLOT_DELAY_VS_LEVEL'
-    f.savefig(os.path.join(output_directory, savename + '.svg'))
-    f.savefig(os.path.join(output_directory, savename + '.png'), dpi=300)
+    f.savefig(savename + '.svg')
+    f.savefig(savename + '.png', dpi=300)
     
     
     ## Stats
