@@ -203,10 +203,14 @@ recording_metadata['include'] = recording_metadata['include'].fillna(True)
 recording_metadata = recording_metadata[recording_metadata['include'] == True]
 
 # Drop these with torn data
-recording_metadata = recording_metadata.drop(
-    (datetime.date(2025, 3,10), 'Ketchup_208', 9))
-recording_metadata = recording_metadata.drop(
-    (datetime.date(2025, 3,10), 'Ketchup_209', 5))
+to_drop = [
+    (datetime.date(2025, 3, 10), 'Ketchup_208', 9),
+    (datetime.date(2025, 3, 10), 'Ketchup_209', 5),
+    (datetime.date(2025, 2, 19), 'PowerRainbow2', 3),
+    (datetime.date(2025, 2, 19), 'PowerRainbow2', 4),
+    (datetime.date(2025, 2, 19), 'PowerRainbow2', 6),
+    ]
+recording_metadata = recording_metadata.drop(to_drop)
 
 
 ## Error check that amplitude is always the same
