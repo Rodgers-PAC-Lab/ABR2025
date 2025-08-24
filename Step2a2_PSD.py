@@ -52,12 +52,6 @@ keys_l = []
 # Iterate over recordings
 for date, mouse, recording in tqdm.tqdm(recording_metadata.index):
     
-    # TODO: mark these as exclude
-    if date == datetime.date(2025, 3, 10) and mouse == 'Ketchup_208' and recording == 9:
-        continue
-    if date == datetime.date(2025, 3, 10) and mouse == 'Ketchup_209' and recording == 5:
-        continue
-    
     # Get the recording info
     this_recording = recording_metadata.loc[date].loc[mouse].loc[recording]
 
@@ -136,6 +130,7 @@ topl = topl.unstack('freq').stack('channel', future_stack=True)
 topl = topl.iloc[:, :-1]
 
 # Groupby channel
+# TODO: first aggregate within mouse, then across mice
 topl_mu = topl.groupby('channel').mean()
 topl_err = topl.groupby('channel').std()
 n_recordings = topl.groupby('channel').size().unique().item()
@@ -186,5 +181,9 @@ f.savefig('figures/PSD_BY_CHANNEL.png', dpi=300)
 
 # Stats
 with open('figures/STATS__PSD_BY_CHANNEL', 'w') as fi:
-    fi.write('n = {n_recordings} recordings\n')
+    fi.write(f'n = {n_recordings} recordings\n')
     fi.write('error bars: standard deviation over recordings\n')
+    
+
+## Store
+big_Pxx.to_pickle(os.path.join(output_directory, 'big_Pxx'))
