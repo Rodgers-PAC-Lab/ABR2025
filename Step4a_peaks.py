@@ -54,7 +54,7 @@ big_abrs = pandas.read_pickle(
 
 ## Params
 sampling_rate = 16000  # TODO: store in recording_metadata
-loudest_dB = 91
+loudest_dB = 93
 
 
 ## Aggregate over recordings for each ABR
@@ -186,8 +186,8 @@ primary_peak = big_peak_df_filtered.sort_values('val').groupby(
 
 
 ## Plots
-STRIP_PLOT_PEAK_HEIGHT = False
-STRIP_PLOT_PEAK_LATENCY = False
+STRIP_PLOT_PEAK_HEIGHT = True
+STRIP_PLOT_PEAK_LATENCY = True
 OVERPLOT_LOUDEST_WITH_PEAKS = True
 
 
@@ -222,8 +222,8 @@ if STRIP_PLOT_PEAK_HEIGHT:
 
     # Savefig
     savename = 'figures/STRIP_PLOT_PEAK_HEIGHT'
-    f.savefig(os.path.join(output_directory, savename + '.svg'))
-    f.savefig(os.path.join(output_directory, savename + '.png'), dpi=300)
+    f.savefig(savename + '.svg')
+    f.savefig(savename + '.png', dpi=300)
 
 if STRIP_PLOT_PEAK_LATENCY:
     ## Plot distribution of primary peak latencies by channel and speaker_side
@@ -255,8 +255,8 @@ if STRIP_PLOT_PEAK_LATENCY:
 
     # Savefig
     savename = 'figures/STRIP_PLOT_PEAK_LATENCY'
-    f.savefig(os.path.join(output_directory, savename + '.svg'))
-    f.savefig(os.path.join(output_directory, savename + '.png'), dpi=300)
+    f.savefig(savename + '.svg')
+    f.savefig(savename + '.png', dpi=300)
 
 if OVERPLOT_LOUDEST_WITH_PEAKS:
     ## Plot the ABR to the loudest level, with peaks labeled
@@ -350,6 +350,6 @@ if OVERPLOT_LOUDEST_WITH_PEAKS:
     
     # Savefig
     savename = 'figures/OVERPLOT_LOUDEST_WITH_PEAKS'
-    f.savefig(os.path.join(output_directory, savename + '.svg'))
-    f.savefig(os.path.join(output_directory, savename + '.png'), dpi=300)
+    f.savefig(savename + '.svg')
+    f.savefig(savename + '.png', dpi=300)
 
