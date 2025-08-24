@@ -98,11 +98,11 @@ big_abr_baseline_rms = big_abr_baseline_rms.median(axis=1)
 big_abr_evoked_rms = big_abr_stds.loc[:, 34].unstack('label')
 
 # TODO: consider smoothing traces before finding threshold crossing
+# TODO: aggregate over recordings and over sessions here, then compute one
+# threshold (rather than averaging thresholds)
 
-# Determine threshold crossing as 3*baseline. Note: more averaging will
-# decrease baseline and therefore threshold, as will better noise levels.
-# Update: now using a fixed threshold in uV
-over_thresh = big_abr_evoked_rms.T > 0.3e-6 # 3 * big_abr_baseline_rms
+# Apply a fixed threshold in uV
+over_thresh = big_abr_evoked_rms.T > 0.3e-6 
 over_thresh = over_thresh.T.stack()
 
 # threshold
@@ -123,7 +123,7 @@ assert not threshold_db.isnull().any()
 ## Plots
 PLOT_ABR_RMS_OVER_TIME = True
 PLOT_ABR_POWER_VS_LEVEL = True
-PLOT_ABR_POWER_VS_LEVEL_AFTER_HL = False
+PLOT_ABR_POWER_VS_LEVEL_AFTER_HL = True
 BASELINE_VS_N_TRIALS = True
 HISTOGRAM_EVOKED_RMS_BY_LEVEL = True
 
@@ -244,13 +244,16 @@ if PLOT_ABR_RMS_OVER_TIME:
     axa[0, 0].set_title('sound from left')
     axa[0, 1].set_title('sound from right')
     
-    # Savefig
+    
+    ## Savefig
     f.savefig(os.path.join('figures', 'PLOT_ABR_RMS_OVER_TIME.svg'))
     f.savefig(os.path.join('figures', 'PLOT_ABR_RMS_OVER_TIME.png'), dpi=300)
     
-    # Stats
+    
+    ## Stats
     stats_filename = 'figures/STATS__PLOT_ABR_RMS_OVER_TIME'
     with open(stats_filename, 'w') as fi:
+        fi.write(stats_filename + '\n')
         fi.write(f'n = {to_agg.shape[1]} mice\n')
         fi.write(
             'compute rolling RMS for each recording * level, '
@@ -258,6 +261,10 @@ if PLOT_ABR_RMS_OVER_TIME:
             'then mean over date within mouse, '
             'then mean and SEM over mice, '
             'then plot on log scale\n')
+    
+    # Echo
+    with open(stats_filename) as fi:
+        print(''.join(fi.readlines()))
 
 if PLOT_ABR_POWER_VS_LEVEL:
     ## Plot ABR rms power vs sound level for all mice together
@@ -272,10 +279,19 @@ if PLOT_ABR_POWER_VS_LEVEL:
     this_big_abr_evoked_rms = big_abr_evoked_rms.xs(
         False, level='after_HL').droplevel('HL_type')
 
-    # Calculate mean threshold per mouse
+    # Aggregate over recording within date * mouse
     avg_thresh = this_threshold_db.groupby(
+        ['channel', 'speaker_side', 'date', 'mouse']).mean()
+    agged_rms = this_big_abr_evoked_rms.groupby(
+        ['channel', 'speaker_side', 'date', 'mouse']).mean()
+
+    # Aggregate over date within mouse
+    # TODO: consider taking only first date
+    avg_thresh = avg_thresh.groupby(
         ['channel', 'speaker_side', 'mouse']).mean()
-    
+    agged_rms = agged_rms.groupby(
+        ['channel', 'speaker_side', 'mouse']).mean()
+
     # Set up ax_rows and ax_cols
     channel_l = ['LV', 'RV', 'LR']
     speaker_side_l = ['L', 'R']
@@ -287,10 +303,8 @@ if PLOT_ABR_POWER_VS_LEVEL:
     f.subplots_adjust(
         left=.17, right=.89, top=.95, bottom=.15, hspace=.15, wspace=.12)
 
-    # Average and iterate over channel and speaker side configs
-    agged_rms = this_big_abr_evoked_rms.groupby(
-        ['channel', 'speaker_side', 'mouse']).mean()
-    gobj = agged_rms.groupby(['channel','speaker_side'])
+    # Iterate over channel * speaker_side
+    gobj = agged_rms.groupby(['channel', 'speaker_side'])
     for (channel, speaker_side), subdf in gobj:
         
         # Drop grouping keys
@@ -304,23 +318,38 @@ if PLOT_ABR_POWER_VS_LEVEL:
 
         # Plot all mice for this config
         for mouse in subdf.index:
-            mouse_evoked = subdf.loc[mouse].copy()
-            ax.semilogy(mouse_evoked* 1e6,  lw=.75, color='gray', alpha=.6)
+            # Get power vs level for this mouse
+            topl = subdf.loc[mouse].copy()
 
-            # Get avg threshold
-            mouse_thresh = avg_thresh.loc[channel].loc[speaker_side].loc[mouse].item()
+            # Get avg threshold for this mouse
+            thresh = avg_thresh.loc[
+                channel].loc[speaker_side].loc[mouse].item()
 
-            # Round mouse_thresh to nearest actual sound level
-            thresh_diffs = np.abs(mouse_evoked.index - mouse_thresh)
-            lowest_diff_idx = np.argmin(thresh_diffs)
-            near_thresh = mouse_evoked.index[lowest_diff_idx]
+            #~ # Round mouse_thresh to nearest actual sound level
+            #~ thresh_diffs = np.abs(mouse_evoked.index - mouse_thresh)
+            #~ lowest_diff_idx = np.argmin(thresh_diffs)
+            #~ near_thresh = mouse_evoked.index[lowest_diff_idx]
 
-            # Plot mouse threshold (rounded)
-            if not pandas.isnull(mouse_thresh):
-                ax.semilogy(
-                    [near_thresh],
-                    [mouse_evoked.loc[near_thresh] * 1e6],
-                    'ro', ms=2.5, alpha=.5)
+            #~ # Plot mouse threshold (rounded)
+            #~ if not pandas.isnull(mouse_thresh):
+                #~ ax.semilogy(
+                    #~ [near_thresh],
+                    #~ [mouse_evoked.loc[near_thresh] * 1e6],
+                    #~ 'ro', ms=2.5, alpha=.5)
+
+            # Because thresh is a mean over recordings, it doesn't
+            # align with evoked RMS. Resample to make the point lie
+            # on the line
+            thresh_y = np.interp([thresh], topl.index, topl.values)
+
+            # Plot evoked RMS
+            ax.semilogy(topl * 1e6, color='gray', lw=.75, alpha=.5)
+            
+            # Plot thresh
+            ax.semilogy(
+                [thresh], [thresh_y * 1e6], 
+                marker='o', color='red', mfc='none', ms=2.5, alpha=.5)
+
 
         # Despine
         my.plot.despine(ax)
@@ -333,9 +362,28 @@ if PLOT_ABR_POWER_VS_LEVEL:
         ax.set_xlabel('sound level (dB)')
     axa[1,0].set_ylabel('evoked ABR (uV RMS)')
     
-    # Savefig
+    
+    ## Savefig
     f.savefig('figures/PLOT_ABR_POWER_VS_LEVEL.svg')
     f.savefig('figures/PLOT_ABR_POWER_VS_LEVEL.png', dpi=300)
+
+
+    ## Stats
+    n_mice = len(agged_rms.index.get_level_values('mouse').unique())
+    stats_filename = 'figures/PLOT_ABR_POWER_VS_LEVEL'
+    with open(stats_filename, 'w') as fi:
+        fi.write(stats_filename + '\n')
+        fi.write(f'n = {n_mice} mice, pre-HL only\n')
+        fi.write(
+            'mean power vs level over recordings within date, '
+            'then mean over date within mouse.\n'
+            'mean threshold in the same way as above. then interpolate '
+            'the meaned threshold onto the power vs level curve\n'
+            )
+    
+    # Echo
+    with open(stats_filename) as fi:
+        print(''.join(fi.readlines()))
 
 if PLOT_ABR_POWER_VS_LEVEL_AFTER_HL:
     ## Plot sham and bilateral pre- and post-HL
