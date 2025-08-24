@@ -172,6 +172,7 @@ for date, mouse, recording in tqdm.tqdm(recording_metadata.index):
         ])
     
     # Rename the channels meaningfully
+    # TODO: verify this works for Pineapple_197 on 2025-02-12 when it's permuted
     triggered_neural = triggered_neural.rename(columns={
         0: this_recording.loc['ch0_config'], 
         2: this_recording.loc['ch2_config'],
