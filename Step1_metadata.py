@@ -150,6 +150,17 @@ for idx in tqdm.tqdm(experiment_metadata.index):
     this_date_metadata = abr.loading.get_metadata(
         data_directory, experiment_date.strftime('%y%m%d'), 'v6')
     
+    # Check that we actually found data
+    assert len(this_date_metadata) > 0
+    assert mouse in this_date_metadata['mouse'].values
+
+    # Warn about mice that we are dropping
+    # TODO: make sure these are all 5xFAD+
+    drop_mice = this_date_metadata['mouse'].unique()
+    ignoring_mice = [mouse for mouse in drop_mice if mouse not in mouse_metadata['mouse'].values]
+    if len(ignoring_mice) > 0:
+        print(f'warning: ignoring mice {ignoring_mice}')
+    
     # Include only data from this mouse
     this_date_metadata = this_date_metadata[
         this_date_metadata['mouse'] == mouse]
