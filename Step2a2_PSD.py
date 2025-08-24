@@ -86,10 +86,12 @@ for date, mouse, recording in tqdm.tqdm(recording_metadata.index):
         ]
 
     # DataFrame labeled by channel
+    # TODO: verify this works for Pineapple_197 on 2025-02-12 when it's permuted
     neural_data_df = pandas.DataFrame(
         neural_data_V, columns=neural_channel_names)
 
     # Drop NN
+    # TODO: delete this since it never happens
     neural_data_df = neural_data_df.drop('NN', axis=1, errors='ignore')
 
 
