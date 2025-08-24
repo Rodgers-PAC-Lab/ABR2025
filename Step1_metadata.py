@@ -191,12 +191,18 @@ recording_metadata['include'] = recording_metadata['include'].fillna(True)
 # Drop those with 'include' == False
 recording_metadata = recording_metadata[recording_metadata['include'] == True]
 
+# Drop these with torn data
+recording_metadata = recording_metadata.drop(
+    (datetime.date(2025, 3,10), 'Ketchup_208', 9))
+recording_metadata = recording_metadata.drop(
+    (datetime.date(2025, 3,10), 'Ketchup_209', 5))
+
 
 ## Error check that amplitude is always the same
 for actual_amplitude in recording_metadata['amplitude'].values:
     assert actual_amplitude == expected_amplitude
 
-# Drop
+# Drop this column
 recording_metadata = recording_metadata.drop('amplitude', axis=1)
 
 
