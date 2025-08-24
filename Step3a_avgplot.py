@@ -250,7 +250,7 @@ if GRAND_AVG_ABR_PLOT:
         axa[0, 1].set_title('sound from right')
         
         # Save figure
-        savename = f'GRAND_AVG_ABR_PLOT__{plot_type}'
+        savename = f'figures/GRAND_AVG_ABR_PLOT__{plot_type}'
         f.savefig(os.path.join(output_directory, savename + '.svg'))
         f.savefig(os.path.join(output_directory, savename + '.png'), dpi=300)
 
@@ -349,7 +349,7 @@ if GRAND_AVG_IMSHOW:
         f.text(.51, .01, 'time (ms)', ha='center', va='bottom')
 
         # Save figure
-        savename = f'GRAND_AVG_IMSHOW__{plot_type}'
+        savename = f'figures/GRAND_AVG_IMSHOW__{plot_type}'
         f.savefig(os.path.join(output_directory, savename + '.svg'))
         f.savefig(os.path.join(output_directory, savename + '.png'), dpi=300)
         f_cb.savefig(os.path.join(output_directory, savename + '.colorbar.svg'))
@@ -402,7 +402,7 @@ if GRAND_AVG_IPSI_VS_CONTRA:
     ax.set_xlabel('time (ms)')
     
     # Save figure
-    savename = 'GRAND_AVG_IPSI_VS_CONTRA'
+    savename = 'figures/GRAND_AVG_IPSI_VS_CONTRA'
     f.savefig(os.path.join(output_directory, savename + '.svg'))
     f.savefig(os.path.join(output_directory, savename + '.png'), dpi=300)
 
@@ -448,7 +448,7 @@ if GRAND_AVG_LR_LEFT_VS_RIGHT:
     ax.set_xlabel('time (ms)')
     
     # Save figure
-    savename = 'GRAND_AVG_LR_LEFT_VS_RIGHT'
+    savename = 'figures/GRAND_AVG_LR_LEFT_VS_RIGHT'
     f.savefig(os.path.join(output_directory, savename + '.svg'))
     f.savefig(os.path.join(output_directory, savename + '.png'), dpi=300)
 
@@ -493,7 +493,7 @@ if GRAND_AVG_ONE_SIDE_ONLY:
     ax.set_xlabel('time (ms)')
     
     # Save figure
-    savename = 'GRAND_AVG_ONE_SIDE_ONLY'
+    savename = 'figures/GRAND_AVG_ONE_SIDE_ONLY'
     f.savefig(os.path.join(output_directory, savename + '.svg'))
     f.savefig(os.path.join(output_directory, savename + '.png'), dpi=300)
 
@@ -582,19 +582,21 @@ if PLOT_DELAY_VS_LEVEL:
     # Legend
     ax.text(80, 0.35, f'n = {n_mice} mice', ha='center', va='center')
     
-    # Save figure
-    savename = 'PLOT_DELAY_VS_LEVEL'
+    
+    ## Save figure
+    savename = 'figures/PLOT_DELAY_VS_LEVEL'
     f.savefig(os.path.join(output_directory, savename + '.svg'))
     f.savefig(os.path.join(output_directory, savename + '.png'), dpi=300)
     
-    # Stats
-    with open('STATS__PLOT_DELAY_VS_LEVEL', 'w') as fi:
+    
+    ## Stats
+    with open('figures/STATS__PLOT_DELAY_VS_LEVEL', 'w') as fi:
         fi.write('mean over xcorr peak for all channels, speaker sides, and recordings\n')
         fi.write(f'n = {n_mice} mice\n')
         fi.write(f'mean slope in us/dB: {slope_by_mouse_mu}\n')
         fi.write(f'SEM slope in us/dB: {slope_by_mouse_sem}\n')
     
     # Echo
-    with open('STATS__PLOT_DELAY_VS_LEVEL') as fi:
+    with open('figures/STATS__PLOT_DELAY_VS_LEVEL') as fi:
         for line in fi.readlines():
             print(line.strip())

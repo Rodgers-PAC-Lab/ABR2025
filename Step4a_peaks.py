@@ -221,7 +221,7 @@ if STRIP_PLOT_PEAK_HEIGHT:
     my.plot.despine(ax)
 
     # Savefig
-    savename = 'STRIP_PLOT_PEAK_HEIGHT'
+    savename = 'figures/STRIP_PLOT_PEAK_HEIGHT'
     f.savefig(os.path.join(output_directory, savename + '.svg'))
     f.savefig(os.path.join(output_directory, savename + '.png'), dpi=300)
 
@@ -254,7 +254,7 @@ if STRIP_PLOT_PEAK_LATENCY:
     my.plot.despine(ax)
 
     # Savefig
-    savename = 'STRIP_PLOT_PEAK_LATENCY'
+    savename = 'figures/STRIP_PLOT_PEAK_LATENCY'
     f.savefig(os.path.join(output_directory, savename + '.svg'))
     f.savefig(os.path.join(output_directory, savename + '.png'), dpi=300)
 
@@ -349,7 +349,7 @@ if OVERPLOT_LOUDEST_WITH_PEAKS:
     axa[0, 1].set_title('sound from right')
     
     # Savefig
-    savename = 'OVERPLOT_LOUDEST_WITH_PEAKS'
+    savename = 'figures/OVERPLOT_LOUDEST_WITH_PEAKS'
     f.savefig(os.path.join(output_directory, savename + '.svg'))
     f.savefig(os.path.join(output_directory, savename + '.png'), dpi=300)
 

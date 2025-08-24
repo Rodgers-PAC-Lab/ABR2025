@@ -213,8 +213,8 @@ if PLOT_EKG_GRAND_MEAN:
     ax.legend(['LR', 'LV', 'RV'])
     ax.set_xlim((-15, 15))
     my.plot.despine(ax)
-    f.savefig('PLOT_EKG_GRAND_MEAN.svg')
-    f.savefig('PLOT_EKG_GRAND_MEAN.png', dpi=300)
+    f.savefig('figures/PLOT_EKG_GRAND_MEAN.svg')
+    f.savefig('figures/PLOT_EKG_GRAND_MEAN.png', dpi=300)
 
 if PLOT_EKG_SESSION_MEAN:
     # Plot LR by session (each channel seems equally variable)
@@ -229,8 +229,8 @@ if PLOT_EKG_SESSION_MEAN:
     ax.set_xlim((-15, 15))
     ax.set_ylabel('EKG (uV)')
     my.plot.despine(ax)
-    f.savefig('PLOT_EKG_SESSION_MEAN.svg')
-    f.savefig('PLOT_EKG_SESSION_MEAN.png', dpi=300)
+    f.savefig('figures/PLOT_EKG_SESSION_MEAN.svg')
+    f.savefig('figures/PLOT_EKG_SESSION_MEAN.png', dpi=300)
 
 if PLOT_EKG_STATS:
     # Histogram height, prominence, width, and IBI by session
@@ -248,8 +248,8 @@ if PLOT_EKG_STATS:
     axa[3].hist(stats_by_session['IBI'] / sampling_rate * 1000, bins=21)
     axa[3].set_xlabel('IBI (ms)')
     f.tight_layout()
-    f.savefig('PLOT_EKG_STATS.svg')
-    f.savefig('PLOT_EKG_STATS.png', dpi=300)
+    f.savefig('figures/PLOT_EKG_STATS.svg')
+    f.savefig('figures/PLOT_EKG_STATS.png', dpi=300)
 
     # These narrow and wide ones seem to have fairly similar shapes, just stretched
     #~ mask = by_session['widths'] < 47

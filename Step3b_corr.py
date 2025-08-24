@@ -177,10 +177,10 @@ if HIST_CORRELATION_ACROSS_MICE:
     f.text(.5, .82, 'within mouse', color='gray', ha='center')
 
     # Savefig
-    f.savefig('HIST_CORRELATION_ACROSS_MICE.svg')
-    f.savefig('HIST_CORRELATION_ACROSS_MICE.png', dpi=300)
+    f.savefig('figures/HIST_CORRELATION_ACROSS_MICE.svg')
+    f.savefig('figures/HIST_CORRELATION_ACROSS_MICE.png', dpi=300)
 
-    with open('STATS__HIST_CORRELATION_ACROSS_MICE', 'w') as fi:
+    with open('figures/STATS__HIST_CORRELATION_ACROSS_MICE', 'w') as fi:
         n_mice = len(within_mouse_corr)
         fi.write(f'n = {n_mice} with multiple sessions\n')
         fi.write('across mice mean R: {:.4f}\n'.format(
@@ -190,7 +190,7 @@ if HIST_CORRELATION_ACROSS_MICE:
         fi.write('within sessions mean R: {:.4f}\n'.format(
             within_mouse_corr.mean()))
 
-    with open('STATS__HIST_CORRELATION_ACROSS_MICE') as fi:
+    with open('figures/STATS__HIST_CORRELATION_ACROSS_MICE') as fi:
         for line in fi.readlines():
             print(line.strip())
 
@@ -213,8 +213,8 @@ if HEATMAP_CORRELATION_ACROSS_MICE:
     cb = my.plot.colorbar(fig=f)
 
     # Savefig
-    f.savefig('HEATMAP_CORRELATION_ACROSS_MICE.svg')
-    f.savefig('HEATMAP_CORRELATION_ACROSS_MICE.png', dpi=300)
+    f.savefig('figures/HEATMAP_CORRELATION_ACROSS_MICE.svg')
+    f.savefig('figures/HEATMAP_CORRELATION_ACROSS_MICE.png', dpi=300)
 
 
 

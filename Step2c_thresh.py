@@ -334,8 +334,8 @@ if PLOT_ABR_POWER_VS_LEVEL:
     axa[1,0].set_ylabel('evoked ABR (uV RMS)')
     
     # Savefig
-    f.savefig('PLOT_ABR_POWER_VS_LEVEL.svg')
-    f.savefig('PLOT_ABR_POWER_VS_LEVEL.png', dpi=300)
+    f.savefig('figures/PLOT_ABR_POWER_VS_LEVEL.svg')
+    f.savefig('figures/PLOT_ABR_POWER_VS_LEVEL.png', dpi=300)
 
 if PLOT_ABR_POWER_VS_LEVEL_AFTER_HL:
     ## Plot sham and bilateral pre- and post-HL
@@ -474,7 +474,7 @@ if PLOT_ABR_POWER_VS_LEVEL_AFTER_HL:
         ax.set_xticklabels(('pre', 'post'))
         
         # Savefig
-        savename = f'PLOT_ABR_POWER_VS_LEVEL_AFTER_HL__thresh__{HL_type}'
+        savename = f'figures/PLOT_ABR_POWER_VS_LEVEL_AFTER_HL__thresh__{HL_type}'
         f.savefig(savename + '.svg')
         f.savefig(savename + '.png', dpi=300)
     
@@ -517,8 +517,8 @@ if BASELINE_VS_N_TRIALS:
     #~ for label, evoked in evoked_by_level[:3].items():
         #~ ax.plot(np.log10([50, 250]), np.log10([evoked * 1e9, evoked * 1e9]), '-')
 
-    f.savefig('BASELINE_VS_N_TRIALS.svg')
-    f.savefig('BASELINE_VS_N_TRIALS.png', dpi=300)
+    f.savefig('figures/BASELINE_VS_N_TRIALS.svg')
+    f.savefig('figures/BASELINE_VS_N_TRIALS.png', dpi=300)
 
 
 if HISTOGRAM_EVOKED_RMS_BY_LEVEL:
@@ -552,5 +552,5 @@ if HISTOGRAM_EVOKED_RMS_BY_LEVEL:
     ax.set_xlabel('evoked signal (RMS)')
     ax.set_ylabel('fraction of recordings')
 
-    f.savefig('HISTOGRAM_EVOKED_RMS_BY_LEVEL.svg')
-    f.savefig('HISTOGRAM_EVOKED_RMS_BY_LEVEL.png', dpi=300)
+    f.savefig('figures/HISTOGRAM_EVOKED_RMS_BY_LEVEL.svg')
+    f.savefig('figures/HISTOGRAM_EVOKED_RMS_BY_LEVEL.png', dpi=300)
