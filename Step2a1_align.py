@@ -61,6 +61,7 @@ expected_amplitude = [
 log10_voltage = np.sort(np.log10(expected_amplitude) + 1.34)
 
 # SPL as measured with the ultrasonic microphone
+# Note: Subtract 30 dB here (average over 50 ms instead of 0.05 ms)
 amplitude_labels = np.linspace(45, 93, 13).astype(int)
 
 # Convert the voltages to cuts
