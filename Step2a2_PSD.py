@@ -1,5 +1,9 @@
 ## Make PSD plots
-# This script takes a while - 12 minutes or so
+# Load PSDs and aggregate them
+# There are some mice with higher 60 Hz or other types of noise, but
+# they aren't extreme outliers
+#
+# TODO: check these PSDs by sex and hearing loss condition
 #
 # Plots
 #   PSD_BY_CHANNEL and STATS__PSD_BY_CHANNEL
@@ -33,11 +37,6 @@ raw_data_directory = paths['raw_data_directory']
 output_directory = paths['output_directory']
 
 
-## Load results of main1
-recording_metadata = pandas.read_pickle(
-    os.path.join(output_directory, 'recording_metadata'))
-
-
 ## Params
 # Recording params
 # TODO: store in recording_metadata?
@@ -45,84 +44,18 @@ sampling_rate = 16000
 neural_channel_numbers = [0, 2, 4]
 
 
-## Load data from each recording
-Pxx_df_l = []
-keys_l = []
+## Load previous results
+# Load results of Step1
+recording_metadata = pandas.read_pickle(
+    os.path.join(output_directory, 'recording_metadata'))
 
-# Iterate over recordings
-for date, mouse, recording in tqdm.tqdm(recording_metadata.index):
-    
-    # Get the recording info
-    this_recording = recording_metadata.loc[date].loc[mouse].loc[recording]
-
-    
-    ## Load raw data in volts
-    # Get the filename
-    recording_folder = os.path.normpath(
-        os.path.join(raw_data_directory, this_recording['short_datafile']))
-    
-    # Load the data
-    data = abr.loading.load_recording(recording_folder)
-    data = data['data']
-    
-    # Parse into neural and speaker data
-    neural_data_V = data[:, neural_channel_numbers]
+# Load results of Step2
+big_Pxx = pandas.read_pickle(
+    os.path.join(output_directory, 'big_Pxx'))
 
 
-    ## Check for glitches
-    # TODO: do this earlier, in data loading
-    # The maximum voltage I ever see in real data is ~0.1 V, and that's only
-    # when there's a substantial DC offset. The demeaned absmax is like ~1 mV.
-    assert np.abs(neural_data_V).max() < 0.3
-    
-    
-    ## Label the neural data by channel name
-    # Get the channel names
-    # These must match neural_channel_numbers above
-    neural_channel_names = [
-        this_recording.loc['ch0_config'],
-        this_recording.loc['ch2_config'],
-        this_recording.loc['ch4_config'],
-        ]
-
-    # DataFrame labeled by channel
-    # TODO: verify this works for Pineapple_197 on 2025-02-12 when it's permuted
-    neural_data_df = pandas.DataFrame(
-        neural_data_V, columns=neural_channel_names)
-
-    # Drop NN
-    # TODO: delete this since it never happens
-    neural_data_df = neural_data_df.drop('NN', axis=1, errors='ignore')
-
-
-    ## Run PSD on each column
-    Pxx_l = []
-    for col in neural_data_df.values.T:
-        # Data is in V
-        Pxx, freqs = paclab.misc.psd(col, NFFT=16384, Fs=sampling_rate)
-        Pxx_l.append(Pxx)
-
-    # DataFrame
-    Pxx_df = pandas.DataFrame(
-        np.transpose(Pxx_l),
-        columns=neural_data_df.columns, index=freqs)
-    Pxx_df.index.name = 'freq'
-    Pxx_df.columns.name = 'channel'
-
-
-    ## Store
-    Pxx_df_l.append(Pxx_df)
-    keys_l.append((date, mouse, recording))
-
-
-## Concat
-big_Pxx = pandas.concat(
-    Pxx_df_l, keys=keys_l,
-    names=['date', 'mouse', 'recording'])
-    
-
-## Plot
-# Convert to db re 1 uV
+## Compute average PSD
+# Convert to db re 1 uV**2
 topl = 10 * np.log10(big_Pxx * 1e12)
 
 # Get freq on columns, and channels on index
@@ -131,17 +64,28 @@ topl = topl.unstack('freq').stack('channel', future_stack=True)
 # Drop the nyquist frequency
 topl = topl.iloc[:, :-1]
 
-# Groupby channel
-# TODO: first aggregate within mouse, then across mice
-topl_mu = topl.groupby('channel').mean()
-topl_err = topl.groupby('channel').std()
+# Sample size
 n_recordings = topl.groupby('channel').size().unique().item()
+n_mice = len(topl.groupby('mouse').size())
 
+# Aggregate within mouse first
+# TODO: drop post-HL (and maybe all after 1st session per mouse)
+by_mouse = topl.groupby(['mouse', 'channel']).mean()
+
+# Aggregate across mice
+topl_mu = by_mouse.groupby('channel').mean()
+topl_err = by_mouse.groupby('channel').sem()
+
+
+## Plot
 # Figure handles
 f, ax = my.plot.figure_1x1_standard()
+f.subplots_adjust(left=.35, right=.85)
 
 # Plot each channel
 # The three channels are similar, except LR has less ~1 Hz and more ~100 Hz
+#   (ie, LR cancels shared low-frequency noise and emphasizes ECG/ABR)
+# Also, LV is generally above RV
 for channel in ['LV', 'RV', 'LR']:
     if channel == 'LV':
         color = 'b'
@@ -164,18 +108,30 @@ ax.set_xticks((1e0, 1e1, 1e2, 1e3, 1e4))
 ax.set_xlim((1e0, 1e4))
 
 # y axis
-ax.set_ylabel('power spectral density\n(uV/Hz)')
+# https://stackoverflow.com/questions/21226868/superscript-in-python-plots
+ax.set_ylabel('power spectral density\n(dB re 1 $\mathregular{uV^2}$/Hz)')
 ax.set_yticks((-40, -20, 0, 20, 40))
-ax.set_yticklabels((.01, .1, 1, 10, 100))
 ax.set_ylim((-40, 40))
+
+# 1/f line
+ax.plot([1, 1000], [20, -40], 'k--', lw=.75)
+#~ ax.text(10, -20, '1/f')
+
+# Label bands
+# ABR - 300-3000
+# ECG - 20-500
+ax.plot([20, 500], [30, 30], 'k-')
+ax.text(100, 31, 'ECG', ha='center', va='bottom')
+ax.plot([300, 3000], [25, 25], 'k-')
+ax.text(900, 23, 'ABR', ha='center', va='top')
 
 # pretty
 my.plot.despine(ax)
 
 # legend
-f.text(.9, .9, 'LR', ha='center', va='center', color='k')
-f.text(.9, .82, 'LV', ha='center', va='center', color='b')
-f.text(.9, .74, 'RV', ha='center', va='center', color='r')
+f.text(.9, .9, 'LV', ha='center', va='center', color='b')
+f.text(.9, .82, 'RV', ha='center', va='center', color='r')
+f.text(.9, .74, 'LR', ha='center', va='center', color='k')
 
 # Save figure
 f.savefig('figures/PSD_BY_CHANNEL.svg')
@@ -183,8 +139,9 @@ f.savefig('figures/PSD_BY_CHANNEL.png', dpi=300)
 
 # Stats
 with open('figures/STATS__PSD_BY_CHANNEL', 'w') as fi:
-    fi.write(f'n = {n_recordings} recordings\n')
-    fi.write('error bars: standard deviation over recordings\n')
+    fi.write(f'n = {n_recordings} recordings from n = {n_mice} mice\n')
+    fi.write('aggregated within mouse and then across mice\n')
+    fi.write('error bars: SEM over mice\n')
     
 
 ## Store
