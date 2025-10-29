@@ -1,12 +1,14 @@
 ## Identify and categorize clicks, and slice neural and audio data around them
 # This script takes a while - 12 minutes or so
-# Make sure there are no errors about torn recordings or glitches
+# Loads data, checks for glitches, calculates PSD, detects click params, 
+# slices data, stores results.
+# This is also where the amplitude labels are assigned.
 #
 # Writes out the following in the output directory
 #   big_triggered_ad - audio data triggered on clicks
 #   big_triggered_neural - neural data triggered on clicks
 #   big_click_params - click metadata
-
+#   big_Pxx - PSDs
 
 import os
 import datetime
@@ -16,6 +18,7 @@ import scipy.signal
 import numpy as np
 import pandas
 from paclab import abr
+import paclab
 import my.plot
 import matplotlib.pyplot as plt
 import tqdm
@@ -48,6 +51,14 @@ sampling_rate = 16000
 neural_channel_numbers = [0, 2, 4]
 audio_channel_number = 7
 
+# ABR band params
+nyquist_freq = sampling_rate / 2
+ahi, bhi = scipy.signal.butter(
+    2, (
+    abr_highpass_freq / nyquist_freq, 
+    abr_lowpass_freq / nyquist_freq), 
+    btype='bandpass')
+
 
 ## Set up the click categories
 # In this dataset, all clicks should have this amplitude
@@ -62,7 +73,7 @@ log10_voltage = np.sort(np.log10(expected_amplitude) + 1.34)
 
 # SPL as measured with the ultrasonic microphone
 # Note: Subtract 30 dB here (average over 50 ms instead of 0.05 ms)
-amplitude_labels = np.linspace(45, 93, 13).astype(int)
+amplitude_labels = np.linspace(45, 93, 13).astype(int) - 30 
 
 # Convert the voltages to cuts
 amplitude_cuts = (log10_voltage[1:] + log10_voltage[:-1]) / 2
@@ -80,6 +91,7 @@ amplitude_cuts = np.concatenate([
 click_params_l = []
 triggered_ad_l = []
 triggered_neural_l = []
+Pxx_df_l = []
 keys_l = []
 
 # Iterate over recordings
@@ -109,6 +121,46 @@ for date, mouse, recording in tqdm.tqdm(recording_metadata.index):
     assert np.abs(neural_data_V).max() < 0.3
     
     
+    ## Label the neural data by channel name
+    # DataFrame labeled by channel number
+    neural_data_df = pandas.DataFrame(
+        neural_data_V, 
+        columns=neural_channel_numbers)
+
+    # Rename the channels meaningfully
+    # This fixes the inconsistent channel order for Pineapple_197 on 2025-02-12
+    neural_data_df.columns.name = 'channel'
+    neural_data_df = neural_data_df.rename(columns={
+        0: this_recording.loc['ch0_config'], 
+        2: this_recording.loc['ch2_config'],
+        4: this_recording.loc['ch4_config']
+        }, level='channel')
+
+    # Check no NN or other channels
+    assert neural_data_df.columns.isin(['LR', 'LV', 'RV']).all()
+    neural_data_df = neural_data_df.sort_index(axis=1)
+
+
+    ## Run PSD on each column
+    Pxx_l = []
+    for col in neural_data_df.values.T:
+        # Data is in V
+        # Result is in V**2/Hz (if scale_by_freq == True, which is default)
+        # Check: converting to uV yields a PSD that is 1e12 greater
+        Pxx, freqs = paclab.misc.psd(col, NFFT=16384, Fs=sampling_rate)
+        Pxx_l.append(Pxx)
+
+    # DataFrame
+    Pxx_df = pandas.DataFrame(
+        np.transpose(Pxx_l),
+        columns=neural_data_df.columns, index=freqs)
+    Pxx_df.index.name = 'freq'
+    Pxx_df.columns.name = 'channel'
+
+    # Store
+    Pxx_df_l.append(Pxx_df)
+    
+
     ## Identify and categorize clicks
     # Use the least cut as the threshold
     threshold_V = 10 ** amplitude_cuts.min()
@@ -140,14 +192,9 @@ for date, mouse, recording in tqdm.tqdm(recording_metadata.index):
 
 
     ## Extract neural data locked to onsets
-    # Highpass neural data
-    nyquist_freq = sampling_rate / 2
-    ahi, bhi = scipy.signal.butter(
-        2, (
-        abr_highpass_freq / nyquist_freq, 
-        abr_lowpass_freq / nyquist_freq), 
-        btype='bandpass')
-    neural_data_hp = scipy.signal.filtfilt(ahi, bhi, neural_data_V, axis=0)
+    # Bandpass neural data into ABR band
+    # Becomes an array at this point
+    neural_data_hp = scipy.signal.filtfilt(ahi, bhi, neural_data_df, axis=0)
 
     # Extract highpassed neural data around triggers
     # Shape is (n_triggers, n_timepoints, n_channels)
@@ -167,26 +214,15 @@ for date, mouse, recording in tqdm.tqdm(recording_metadata.index):
         ['label', 'polarity', 't_samples']).sort_index()
 
     # The columns are interdigitated samples and channels
+    # The channels are ordered in the same way as neural_data_df.columns
     triggered_neural.columns = pandas.MultiIndex.from_product([
         pandas.Index(range(abr_start_sample, abr_stop_sample), name='timepoint'),
-        pandas.Index(neural_channel_numbers, name='channel')
+        neural_data_df.columns,
         ])
-    
-    # Rename the channels meaningfully
-    # TODO: verify this works for Pineapple_197 on 2025-02-12 when it's permuted
-    triggered_neural = triggered_neural.rename(columns={
-        0: this_recording.loc['ch0_config'], 
-        2: this_recording.loc['ch2_config'],
-        4: this_recording.loc['ch4_config']
-        }, level='channel')
-    
-    # Drop NN if any
-    triggered_neural = triggered_neural.drop(
-        'NN', level='channel', axis=1, errors='ignore')
     
     # Stack channel
     triggered_neural = triggered_neural.stack('channel', future_stack=True)
-    
+
 
     ## Store
     click_params_l.append(click_params)
@@ -197,12 +233,18 @@ for date, mouse, recording in tqdm.tqdm(recording_metadata.index):
 
 ## Concat
 big_triggered_ad = pandas.concat(
-    triggered_ad_l, keys=keys_l, names=['date', 'mouse', 'recording'])
+    triggered_ad_l, 
+    keys=keys_l, names=['date', 'mouse', 'recording'])
 big_triggered_neural = pandas.concat(
-    triggered_neural_l, keys=keys_l, names=['date', 'mouse', 'recording'])
+    triggered_neural_l, 
+    keys=keys_l, names=['date', 'mouse', 'recording'])
 big_click_params = pandas.concat(
-    click_params_l, keys=keys_l, names=['date', 'mouse', 'recording']
+    click_params_l, 
+    keys=keys_l, names=['date', 'mouse', 'recording']
     ).set_index('t_samples', append=True).droplevel(None).sort_index()
+big_Pxx = pandas.concat(
+    Pxx_df_l, 
+    keys=keys_l, names=['date', 'mouse', 'recording'])
 
 
 ## Store
@@ -212,3 +254,5 @@ big_triggered_neural.to_pickle(
     os.path.join(output_directory, 'big_triggered_neural'))
 big_click_params.to_pickle(
     os.path.join(output_directory, 'big_click_params'))
+big_Pxx.to_pickle(
+    os.path.join(output_directory, 'big_Pxx'))
