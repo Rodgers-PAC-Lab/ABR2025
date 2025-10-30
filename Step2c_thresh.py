@@ -21,9 +21,10 @@ import tqdm
 import matplotlib
 
 
-## Plotting
+## Plotting 
 my.plot.manuscript_defaults()
 my.plot.font_embed()
+MU = chr(956)
 
 
 ## Paths
@@ -77,7 +78,7 @@ sampling_rate = 16000
 # response and localizing it to a reasonably narrow window (and not extending
 # into the baseline period)
 # Would be good to extract more baseline to use here
-# The peak is around sample 34 (2.1 ms), ie sample 24 - 44, and there is a
+# The peak is around sample 32 (2.0 ms), ie sample 22 - 42, and there is a
 # variable later peak.
 big_abr_stds = big_abrs.T.rolling(window=20, center=True, min_periods=1).std().T
 
@@ -90,12 +91,12 @@ big_abr_baseline_rms = big_abr_stds.loc[:, -30].unstack('label')
 # It's lognormal so mean might be skewed. A mean of log could be good
 big_abr_baseline_rms = big_abr_baseline_rms.median(axis=1)
 
-# Use samples 24 - 44 as evoked peak
+# Use samples 22 - 42 as evoked peak
 # Evoked response increases linearly with level in dB
 # Interestingly, each recording appears to be multiplicatively scaled
 # (shifted up and down on a log plot). The variability in microvolts increases
 # with level, but the variability in log-units is consistent over level.
-big_abr_evoked_rms = big_abr_stds.loc[:, 34].unstack('label')
+big_abr_evoked_rms = big_abr_stds.loc[:, 32].unstack('label')
 
 # TODO: consider smoothing traces before finding threshold crossing
 # TODO: aggregate over recordings and over sessions here, then compute one
@@ -195,6 +196,9 @@ if PLOT_ABR_RMS_OVER_TIME:
             speaker_side_l.index(speaker_side),
         ]
 
+        # Plot the evoked peak time
+        ax.plot([2, 2], [.03, 3], color='gray', lw=.75)
+    
         # Plot each
         for n_level, level in enumerate(subdf.index):
             # Get color
@@ -214,31 +218,33 @@ if PLOT_ABR_RMS_OVER_TIME:
         ax.set_yscale('log')
         ax.set_yticks((0.1, 1.0))
 
-        # Mark the evoked period
-        ax.fill_betweenx(y=(.03, 3), x1=.875, x2=3.375, color='gray', alpha=.25)        
+        #~ # Mark the evoked period
+        #~ ax.fill_betweenx(
+            #~ y=(.03, 3), 
+            #~ x1=.875, x2=3.375, 
+            #~ color='gray', alpha=.25, lw=0)        
 
         # Nicer log labels
         ax.yaxis.set_major_formatter(matplotlib.ticker.ScalarFormatter())
 
-    #~ # Legend
-    #~ for n_label, (label, color) in enumerate(zip(label_l, aut_colorbar)):
-        #~ if np.mod(n_label, 2) != 0:
-            #~ continue
-        #~ f.text(
-            #~ .95, .85 - n_label * .02, f'{label} dB',
-            #~ color=color, ha='center', va='center', size=12)
+    # Legend
+    for n_label, (label, color) in enumerate(zip(label_l, aut_colorbar)):
+        if np.mod(n_label, 2) != 0:
+            continue
+        f.text(
+            .95, .68 - n_label * .02, f'{label} dB',
+            color=color, ha='center', va='center', size=12)
 
     # Pretty
-    ax.set_xlim((-2, 8))
-    ax.set_ylim((.03, 3))
-    ax.set_xticks([0, 3, 6])
-    f.text(.51, .01, 'time (ms)', ha='center', va='bottom')
-    f.text(.05, .55, 'rolling RMS of ABR (uV)', rotation=90, ha='center', va='center')
+    ax.set_xlim((-1, 7))
+    ax.set_ylim((.05, 2))
+    ax.set_xticks([0, 2, 4, 6])
+    f.text(.52, .01, 'time from sound onset (ms)', ha='center', va='bottom')
+    f.text(.02, .56, f'response strength ({MU}V rms)', rotation=90, ha='center', va='center')
 
-    #~ # Label the channel
-    #~ for n_channel, channel in enumerate(channel_l):
-        #~ axa[n_channel, 0].set_ylabel(channel, labelpad=20)
-    #~ axa[1, 1].set_ylabel
+    # Label the channel
+    for n_channel, channel in enumerate(channel_l):
+        axa[n_channel, 0].set_ylabel(channel)
     
     # Label the speaker side
     axa[0, 0].set_title('sound from left')
@@ -265,7 +271,7 @@ if PLOT_ABR_RMS_OVER_TIME:
     # Echo
     with open(stats_filename) as fi:
         print(''.join(fi.readlines()))
-
+1/0
 if PLOT_ABR_POWER_VS_LEVEL:
     ## Plot ABR rms power vs sound level for all mice together
     # Both the mean and standard deviation of evoked power strongly increase
