@@ -1,14 +1,28 @@
 ## Identify and categorize clicks, and slice neural and audio data around them
 # This script takes a while - 12 minutes or so
-# Loads data, checks for glitches, calculates PSD, detects click params, 
-# slices data, stores results.
-# This is also where the amplitude labels are assigned.
+# Everything that involves loading the raw data for all sesssions should be
+# done in this script, to avoid having to load multiple times.
+#
+# TODO: pull out longer times to see what happens in a bigger window
+#
+# Workflow:
+# * Loads data and checks for glitches
+# * Calculates PSD
+# * Extracts heartbeats
+# * Extract and categorizes clicks
+# * Slices neural and audio data around clicks
+# * Concat everything across sessions and stores
+#
+# This script is the one that assigns amplitude labels.
 #
 # Writes out the following in the output directory
 #   big_triggered_ad - audio data triggered on clicks
 #   big_triggered_neural - neural data triggered on clicks
 #   big_click_params - click metadata
 #   big_Pxx - PSDs
+#   big_heartbeat_info - time of each beat
+#   big_heartbeat_waveform - mean EKG waveform of each recording
+
 
 import os
 import datetime
@@ -45,19 +59,15 @@ abr_stop_sample = 120
 abr_highpass_freq = 300
 abr_lowpass_freq = 3000
 
+# ECG params
+heartbeat_highpass_freq = 20
+heartbeat_lowpass_freq = 500
+
 # Recording params
 # TODO: store in recording_metadata?
 sampling_rate = 16000 
 neural_channel_numbers = [0, 2, 4]
 audio_channel_number = 7
-
-# ABR band params
-nyquist_freq = sampling_rate / 2
-ahi, bhi = scipy.signal.butter(
-    2, (
-    abr_highpass_freq / nyquist_freq, 
-    abr_lowpass_freq / nyquist_freq), 
-    btype='bandpass')
 
 
 ## Set up the click categories
@@ -91,6 +101,8 @@ amplitude_cuts = np.concatenate([
 click_params_l = []
 triggered_ad_l = []
 triggered_neural_l = []
+heartbeats_l = []
+heartbeats_waveform_l = []
 Pxx_df_l = []
 keys_l = []
 
@@ -140,6 +152,103 @@ for date, mouse, recording in tqdm.tqdm(recording_metadata.index):
     assert neural_data_df.columns.isin(['LR', 'LV', 'RV']).all()
     neural_data_df = neural_data_df.sort_index(axis=1)
 
+
+    ## Bandpass heartbeat
+    # Define heartbeat filter
+    nyquist_freq = sampling_rate / 2
+    ahi, bhi = scipy.signal.butter(
+        2, (
+        heartbeat_highpass_freq / nyquist_freq, 
+        heartbeat_lowpass_freq / nyquist_freq), 
+        btype='bandpass')
+
+    # Bandpass neural data into ECG band
+    # Becomes an array at this point
+    ekg_signal = scipy.signal.filtfilt(ahi, bhi, neural_data_df, axis=0)
+
+    # Restore DataFrame metadata
+    ekg_signal = pandas.DataFrame(
+        ekg_signal, columns=neural_data_df.columns, index=neural_data_df.index)
+
+    # Find heartbeats, indexed into ekg_signal
+    # 
+    # SHAPE OF EKG
+    # Use the first channel (LR), which is biggest
+    # The peak is always positive on LR and LV, and negative on RV
+    # LV and RV are nearly opposites, so LR is about double
+    # The central peak is maybe 5 ms wide and the whole thing is maybe 25 ms
+    #
+    # HEIGHT and PROMINENCE
+    # The lowest SNR recording is Cat_229 on 2025-05-15, esp recording 1
+    # On this recording, the heights are 40-50 uV and prominences 50-60
+    # Prominences are larger because of the dip around the peak
+    # Breathing artefacts can get up to 25
+    # There is a kind of bimodality in the raw EKG signal with a dip around 27
+    # A threshold of 35 seems appropriate, we probably would prefer to lose
+    # a few heartbeats than to pick up too much noise
+    #
+    # INTER-BEAT INTERVAL ("DISTANCE")
+    # The inter-beat-interval is 3000-7500 samples (187-469 ms)
+    # Enforce a minimum of 1000 samples
+    #
+    # WIDTH
+    # The main peak is about 5 ms wide (80 samples), so set wlen to 150
+    # The 'width' criterion is actually a half-width if rel_height is 0.5
+    # For some reason there's another, narrower mode in widths, around half-width 35
+    # So use a wide range of (10, 100) on width
+    ekg_threshold = 35e-6 # V
+    peak_times, peak_props = scipy.signal.find_peaks(
+        ekg_signal.loc[:, 'LR'], 
+        height=ekg_threshold, 
+        distance=1000,
+        prominence=ekg_threshold,
+        wlen=150,
+        width=(10, 150),
+        rel_height=0.5,
+        )    
+    
+    # DataFrame
+    heartbeats = pandas.DataFrame.from_dict(peak_props)
+    heartbeats['sample'] = peak_times
+
+    # Exclude too close to edge
+    slice_halfwidth = 400
+    heartbeats = heartbeats[
+        (heartbeats['sample'] >= slice_halfwidth) &
+        (heartbeats['sample'] < len(ekg_signal) - slice_halfwidth)
+        ].reset_index(drop=True)
+    heartbeats.index.name = 'beat'
+
+    # Right now this fails on ToyCar1 2025-7-7 rec 8 
+    # Bring this check back after we drop that session
+    #~ # Error check
+    #~ if len(heartbeats) < 10:
+        #~ 1/0
+    
+    # Extract (n_trials, n_timepoints, 3)
+    sliced_l = []
+    for peak in heartbeats['sample']:
+        # Slice
+        sliced = ekg_signal.iloc[
+            peak - slice_halfwidth:peak + slice_halfwidth
+            ]
+        sliced.index = pandas.Index(
+            np.arange(-slice_halfwidth, slice_halfwidth, dtype=int), 
+            name='timepoint')
+        
+        # Store
+        sliced_l.append(sliced)
+    
+    # Concat
+    sliced_beats_df = pandas.concat(sliced_l, keys=heartbeats.index)
+
+    # Mean waveform over beats within recording
+    mean_beat = sliced_beats_df.groupby('timepoint').mean()
+    
+    # Store
+    heartbeats_l.append(heartbeats)
+    heartbeats_waveform_l.append(mean_beat)
+    
 
     ## Run PSD on each column
     Pxx_l = []
@@ -192,6 +301,14 @@ for date, mouse, recording in tqdm.tqdm(recording_metadata.index):
 
 
     ## Extract neural data locked to onsets
+    # ABR band params
+    nyquist_freq = sampling_rate / 2
+    ahi, bhi = scipy.signal.butter(
+        2, (
+        abr_highpass_freq / nyquist_freq, 
+        abr_lowpass_freq / nyquist_freq), 
+        btype='bandpass')
+    
     # Bandpass neural data into ABR band
     # Becomes an array at this point
     neural_data_hp = scipy.signal.filtfilt(ahi, bhi, neural_data_df, axis=0)
@@ -245,7 +362,13 @@ big_click_params = pandas.concat(
 big_Pxx = pandas.concat(
     Pxx_df_l, 
     keys=keys_l, names=['date', 'mouse', 'recording'])
-
+big_heartbeat_info = pandas.concat(
+    heartbeats_l, 
+    keys=keys_l, names=['date', 'mouse', 'recording'])
+big_heartbeat_waveform = pandas.concat(
+    heartbeats_waveform_l, 
+    keys=keys_l, names=['date', 'mouse', 'recording'])
+    
 
 ## Store
 big_triggered_ad.to_pickle(
@@ -256,3 +379,7 @@ big_click_params.to_pickle(
     os.path.join(output_directory, 'big_click_params'))
 big_Pxx.to_pickle(
     os.path.join(output_directory, 'big_Pxx'))
+big_heartbeat_info.to_pickle(
+    os.path.join(output_directory, 'big_heartbeat_info'))
+big_heartbeat_waveform.to_pickle(
+    os.path.join(output_directory, 'big_heartbeat_waveform'))
