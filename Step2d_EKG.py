@@ -1,8 +1,5 @@
-## Pull out EKG
-# Writes out
-#   EKG_heartbeats - time of each beat
-#   EKG_stats - statistics of each recording (e.g., mean EKG size)
-#   EKG_waveforms - mean EKG waveform of each recording
+## Plot stats about ECG
+# TODO: correlate ECG size with ABR size
 #
 # Plots
 #   PLOT_EKG_GRAND_MEAN
@@ -37,9 +34,21 @@ raw_data_directory = paths['raw_data_directory']
 output_directory = paths['output_directory']
 
 
-## Load results of main1
+## Load previous results
+# Load results of main1
 recording_metadata = pandas.read_pickle(
     os.path.join(output_directory, 'recording_metadata'))
+
+# Load results of Step2a1_align
+big_heartbeat_info = pandas.read_pickle(
+    os.path.join(output_directory, 'big_heartbeat_info'))
+big_heartbeat_waveform = pandas.read_pickle(
+    os.path.join(output_directory, 'big_heartbeat_waveform'))
+
+# Drop ToyCar1
+# PowerRainbow2 looks a bit blunted and slow, but not totally out of the realm
+big_heartbeat_info = big_heartbeat_info.drop('ToyCar1', level='mouse')
+big_heartbeat_waveform = big_heartbeat_waveform.drop('ToyCar1', level='mouse')
 
 
 ## Params
@@ -53,152 +62,10 @@ neural_channel_numbers = [0, 2, 4]
 audio_channel_number = 7
 
 
-## Load data from each recording
-click_params_l = []
-triggered_ad_l = []
-triggered_neural_l = []
-keys_l = []
-
-# Iterate over recordings
-heartbeats_l = []
-heartbeats_keys_l = []
-heartbeats_sliced_l = []
-for date, mouse, recording in tqdm.tqdm(recording_metadata.index):
-    
-    # Get the recording info
-    this_recording = recording_metadata.loc[date].loc[mouse].loc[recording]
-
-    
-    ## Load raw data in volts
-    # Get the filename
-    recording_folder = os.path.normpath(
-        os.path.join(raw_data_directory, this_recording['short_datafile']))
-    
-    # Load the data
-    data = abr.loading.load_recording(recording_folder)
-    data = data['data']
-    
-    # Parse into neural and speaker data
-    speaker_signal_V = data[:, audio_channel_number]
-    neural_data_V = data[:, neural_channel_numbers]
-
-
-    ## Bandpass heartbeat
-    # Bandpass all neural channels
-    nyquist_freq = sampling_rate / 2
-    ahi, bhi = scipy.signal.butter(
-        2, (
-        heartbeat_highpass_freq / nyquist_freq, 
-        heartbeat_lowpass_freq / nyquist_freq), 
-        btype='bandpass')
-    ekg_signal = scipy.signal.filtfilt(ahi, bhi, neural_data_V, axis=0)
-
-    # Convert to uV
-    ekg_signal = ekg_signal * 1e6
-
-    # Name the channels
-    # TODO: verify this works for Pineapple_197 on 2025-02-12 when it's permuted
-    # This must match the order of neural_channel_numbers
-    ekg_signal = pandas.DataFrame(ekg_signal)
-    ekg_signal.columns = pandas.Index([
-        this_recording.loc['ch0_config'], 
-        this_recording.loc['ch2_config'], 
-        this_recording.loc['ch4_config'], 
-        ], name='channel')
-    
-    # Find heartbeats, indexed into ekg_signal
-    # 
-    # SHAPE OF EKG
-    # Use the first channel (LR), which is biggest
-    # The peak is always positive on LR and LV, and negative on RV
-    # LV and RV are nearly opposites, so LR is about double
-    # The central peak is maybe 5 ms wide and the whole thing is maybe 25 ms
-    #
-    # HEIGHT and PROMINENCE
-    # The lowest SNR recording is Cat_229 on 2025-05-15, esp recording 1
-    # On this recording, the heights are 40-50 uV and prominences 50-60
-    # Prominences are larger because of the dip around the peak
-    # Breathing artefacts can get up to 25
-    # There is a kind of bimodality in the raw EKG signal with a dip around 27
-    # A threshold of 35 seems appropriate, we probably would prefer to lose
-    # a few heartbeats than to pick up too much noise
-    #
-    # INTER-BEAT INTERVAL ("DISTANCE")
-    # The inter-beat-interval is 3000-7500 samples (187-469 ms)
-    # Enforce a minimum of 1000 samples
-    #
-    # WIDTH
-    # The main peak is about 5 ms wide (80 samples), so set wlen to 150
-    # The 'width' criterion is actually a half-width if rel_height is 0.5
-    # For some reason there's another, narrower mode in widths, around half-width 35
-    # So use a wide range of (10, 100) on width
-    ekg_threshold = 35 # uV
-    peak_times, peak_props = scipy.signal.find_peaks(
-        ekg_signal.loc[:, 'LR'], 
-        height=ekg_threshold, 
-        distance=1000,
-        prominence=ekg_threshold,
-        wlen=150,
-        width=(10, 150),
-        rel_height=0.5,
-        )    
-    
-    # DataFrame
-    heartbeats = pandas.DataFrame.from_dict(peak_props)
-    heartbeats['sample'] = peak_times
-
-    # Exclude too close to edge
-    slice_halfwidth = 400
-    heartbeats = heartbeats[
-        (heartbeats['sample'] >= slice_halfwidth) &
-        (heartbeats['sample'] < len(ekg_signal) - slice_halfwidth)
-        ].reset_index(drop=True)
-    heartbeats.index.name = 'beat'
-
-    # Error check
-    if len(heartbeats) < 10:
-        1/0
-    
-    # Extract (n_trials, n_timepoints, 3)
-    sliced_l = []
-    for peak in heartbeats['sample']:
-        # Slice
-        sliced = ekg_signal.iloc[
-            peak - slice_halfwidth:peak + slice_halfwidth
-            ]
-        sliced.index = pandas.Index(
-            np.arange(-slice_halfwidth, slice_halfwidth, dtype=int), 
-            name='timepoint')
-        
-        # Store
-        sliced_l.append(sliced)
-    
-    # Concat
-    sliced_df = pandas.concat(sliced_l, keys=heartbeats.index)
-    
-    # Store
-    heartbeats_l.append(heartbeats)
-    heartbeats_keys_l.append((date, mouse, recording))
-    heartbeats_sliced_l.append(sliced_df)
-
-# Concat
-heart_df = pandas.concat(
-    heartbeats_l, keys=heartbeats_keys_l, 
-    names=['date', 'mouse', 'recording'])
-beats_df = pandas.concat(
-    heartbeats_sliced_l, keys=heartbeats_keys_l, 
-    names=['date', 'mouse', 'recording'])
-
-
 ## Aggregate
-# Mean waveform over beats within recording
-mean_by_recording = beats_df.groupby(
-    [lev for lev in beats_df.index.names if lev != 'beat']
-    ).mean()
-
 # Mean waveform over recordings within session
-mean_by_session = mean_by_recording.groupby(
-    [lev for lev in mean_by_recording.index.names if lev != 'recording']
+mean_by_session = big_heartbeat_waveform.groupby(
+    [lev for lev in big_heartbeat_waveform.index.names if lev != 'recording']
     ).mean()
 
 # Mean waveform over sessions within mouse
@@ -209,11 +76,12 @@ mean_by_mouse = mean_by_session.groupby(
 
 
 ## Summarize waveform shape by session
-stats_by_session = heart_df.groupby(['date', 'mouse', 'recording']).median()[
+stats_by_session = big_heartbeat_info.groupby(
+    ['date', 'mouse', 'recording']).median()[
     ['peak_heights', 'prominences', 'widths']]
 
 # Add on inter-beat interval
-stats_by_session['IBI'] = heart_df['sample'].diff().dropna().groupby(
+stats_by_session['IBI'] = big_heartbeat_info['sample'].diff().dropna().groupby(
     ['date', 'mouse', 'recording']).median()
 
 
@@ -230,7 +98,7 @@ if PLOT_EKG_GRAND_MEAN:
     f, ax = my.plot.figure_1x1_standard()
     ax.plot(
         grand_mean.index.values / sampling_rate * 1000,
-        grand_mean.values,
+        grand_mean.values * 1e6,
         )
     ax.set_xlabel('time (ms)')
     ax.set_ylabel('EKG (uV)')
@@ -247,7 +115,7 @@ if PLOT_EKG_BY_MOUSE:
 
     ax.plot(
         LR_mean.index.values / sampling_rate * 1000,
-        LR_mean,
+        LR_mean * 1e6,
         color='k', alpha=.1, lw=1)
     ax.set_xlabel('time (ms)')
     ax.set_xlim((-15, 15))
@@ -263,9 +131,9 @@ if PLOT_EKG_STATS:
     # Width: bimodal; mode at 40, dip at 48, mode at 56, long tail to 68
     # IBI: range 4000-6000, mode 5000, min 3200, max 6500
     f, axa = plt.subplots(1, 4, figsize=(12, 3))
-    axa[0].hist(stats_by_session['peak_heights'], bins=21)
+    axa[0].hist(stats_by_session['peak_heights'] * 1e6, bins=21)
     axa[0].set_xlabel('height (uV)')
-    axa[1].hist(stats_by_session['prominences'], bins=21)
+    axa[1].hist(stats_by_session['prominences'] * 1e6, bins=21)
     axa[1].set_xlabel('prominence (uV)')
     axa[2].hist(stats_by_session['widths'], bins=21)
     axa[2].set_xlabel('width (samples)')
@@ -280,9 +148,3 @@ if PLOT_EKG_STATS:
 
 plt.show()
 
-
-## Save
-# TODO: Correlate EKG size and evoked ABR size
-heart_df.to_pickle(os.path.join(output_directory, 'EKG_heartbeats'))
-stats_by_session.to_pickle(os.path.join(output_directory, 'EKG_stats'))
-mean_by_recording.to_pickle(os.path.join(output_directory, 'EKG_waveform'))
