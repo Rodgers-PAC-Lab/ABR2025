@@ -136,7 +136,7 @@ click_params = abr.signal_processing.categorize_clicks(
 assert np.abs(neural_data_V).max() < 0.3
 
 
-## Barely highpass neural data just for visualizing raw data
+## Barely highpass neural data to demean and detrend
 nyquist_freq = sampling_rate / 2
 ahi, bhi = scipy.signal.butter(
     2, 0.1 / nyquist_freq, 
