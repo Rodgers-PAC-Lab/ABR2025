@@ -1,5 +1,6 @@
-## Plot raw data 
-# 2025-02-28 Cedric rec 2? PizzaSlice7?
+## Example plot of raw data
+# Plots:
+#   PLOT_RAW_DATA
 
 import os
 import datetime
@@ -19,9 +20,6 @@ my.plot.manuscript_defaults()
 my.plot.font_embed()
 MU = chr(956)
 
-# Squelch this warning
-#~ pandas.set_option('future.no_silent_downcasting', True)
-
 
 ## Paths
 # Load the required file filepaths.json (see README)
@@ -35,10 +33,11 @@ output_directory = paths['output_directory']
 
 ## Params
 # Specify which date and experimenter to process
-abr_date = datetime.date(year=2025, month=2, day=28)
-mouse = 'PizzaSlice7'
-experimenter = 'Cedric'
-recording = 2
+# Previously: PizzaSlice7 rec2 on 2025-2-28
+abr_date = datetime.date(year=2025, month=5, day=20)
+mouse = 'Cat_229'
+experimenter = 'rowan'
+recording = 10
 
 # Form experimenter dir
 date_s = abr_date.strftime('%Y-%m-%d')
@@ -49,11 +48,12 @@ abr_start_sample = -40
 abr_stop_sample = 120
 abr_highpass_freq = 300
 abr_lowpass_freq = 3000
-audio_extract_win_samples = 10
-speaker_channel = 7
-neural_channel_numbers = [0, 2, 4]
-sampling_rate = 16000
 
+# Recording params
+# TODO: store in recording_metadata?
+sampling_rate = 16000 
+neural_channel_numbers = [0, 2, 4]
+audio_channel_number = 7
 
 
 ## Set up the click categories
@@ -84,18 +84,14 @@ amplitude_cuts = np.concatenate([
     
     
 ## Load results of main1
-recording_metadata = pandas.read_pickle(os.path.join(output_directory, 'recording_metadata'))
-
-# Drop those with 'include' == False
-recording_metadata = recording_metadata[recording_metadata['include'] == True]
-
-
-## Set up click categories
-# Get the recording info
-this_recording = recording_metadata.loc[abr_date].loc[mouse].loc[recording]
+recording_metadata = pandas.read_pickle(
+    os.path.join(output_directory, 'recording_metadata'))
 
 
 ## Load raw data in volts
+# Get the recording info
+this_recording = recording_metadata.loc[abr_date].loc[mouse].loc[recording]
+
 # Get the filename
 recording_folder = os.path.normpath(
     os.path.join(raw_data_directory, this_recording['short_datafile']))
@@ -105,7 +101,7 @@ data = abr.loading.load_recording(recording_folder)
 data = data['data']
 
 # Parse into neural and speaker data
-speaker_signal_V = data[:, speaker_channel]
+speaker_signal_V = data[:, audio_channel_number]
 neural_data_V = data[:, neural_channel_numbers]
 
 
@@ -143,7 +139,7 @@ assert np.abs(neural_data_V).max() < 0.3
 ## Barely highpass neural data just for visualizing raw data
 nyquist_freq = sampling_rate / 2
 ahi, bhi = scipy.signal.butter(
-    2, 1 / nyquist_freq, 
+    2, 0.1 / nyquist_freq, 
     btype='high')
 neural_data_V = scipy.signal.filtfilt(ahi, bhi, neural_data_V, axis=0)
 
@@ -167,7 +163,6 @@ neural_data_df = neural_data_df.rename(columns={
 neural_data_df.index = np.arange(len(neural_data_df)) / sampling_rate
 
 
-
 ## Bandpass in the ABR band
 # ABR band params
 nyquist_freq = sampling_rate / 2
@@ -183,60 +178,98 @@ neural_data_hp_df = pandas.DataFrame(
 
 
 ## Plot
-f, axa = plt.subplots(7, 1, sharex=True, figsize=(10, 6))
-f.subplots_adjust(left=.05, right=.98, bottom=.1, top=.95)
+f, axa = plt.subplots(
+    2, 1, sharex=True, figsize=(7.5, 4.5), height_ratios=[4, 3])
+f.subplots_adjust(left=.1, right=.98, bottom=.14, top=.92, hspace=.4)
 
+# Timing params
+t_start = 295.5
+t_stop = 297.5
 ds_ratio = 10
-channel_order = ['LV', 'RV', 'LR']
-channel2color = {'LR': 'purple', 'LV': 'b', 'RV': 'r'}
 
-# Plot raw data on each channel in the first three axes
+# Color and channel params
+channel_order = ['LV', 'RV', 'LR'][::-1]
+channel2color = {'LR': 'k', 'LV': 'b', 'RV': 'r'}
+
+
+## Plot raw data on each channel in the first axis
 for n_channel, channel in enumerate(channel_order):
     # Get color
     color = channel2color[channel]
     
     # Get ax
-    ax = axa[1 + n_channel]
+    ax = axa[0]
     
     # Plot raw data (in microvolts)
-    ax.plot(neural_data_df.loc[:, channel].iloc[::ds_ratio] * 1e6, color=color, lw=.75)
-    ax.set_ylim((-150, 150))
-    ax.set_yticks((-150, 0, 150))
-
-# Plot highpass data on each channel in the last three axes
-for n_channel, channel in enumerate(channel_order):
-    # Get color
-    color = channel2color[channel]
-    
-    # Get ax
-    ax = axa[4 + n_channel]
-    
-    # Plot raw data (in microvolts)
-    ax.plot(neural_data_hp_df.loc[:, channel].iloc[::ds_ratio] * 1e6, color=color, lw=.75)
-    ax.set_ylim((-20, 20))
-    ax.set_yticks((-20, 0, 20))
-
-# Plot click params
-to_raster = []
-for label in amplitude_labels:
-    # Slice
-    this_click_times = click_params.loc[
-        click_params['label'] == label, 't_samples'].values / sampling_rate
-    
-    # Store
-    to_raster.append(this_click_times)
-to_raster = click_params['t_samples'] / sampling_rate
-axa[0].eventplot(to_raster, color='k')
-#~ axa[0].set_yticks(range(len(amplitude_labels)))
-#~ axa[0].set_yticklabels(amplitude_labels)
-
-# Slice out a reasonable period of time
-axa[6].set_xlim((300, 303))
-axa[6].set_xlabel('time (s)')
+    ax.plot(
+        n_channel * 300 + neural_data_df.loc[:, channel].iloc[::ds_ratio] * 1e6, 
+        color=color, lw=.75)
 
 # Pretty
+ax.set_title('raw data')    
+axa[0].set_ylim((-150, 1000))
+
+
+## Plot highpass data on each channel in the last three axes
+for n_channel, channel in enumerate(channel_order):
+    # Get color
+    color = channel2color[channel]
+    
+    # Get ax
+    ax = axa[1]
+    
+    # Plot raw data (in microvolts)
+    ax.plot(
+        n_channel * 30 + neural_data_hp_df.loc[:, channel].iloc[::ds_ratio] * 1e6, 
+        color=color, lw=.75)
+
+# Pretty
+axa[1].set_ylim((-20, 75))
+
+
+## Plot stimulus bars
+axa[0].plot(
+    click_params['t_samples'] / sampling_rate, 
+    [900] * len(click_params), 
+    '|', color='k', ms=4)
+
+
+## Set time axis
+axa[1].set_title('bandpass filtered (ABR band)')
+axa[1].set_xlim((t_start, t_stop))
+axa[1].set_xlabel('time (s)')
+axa[1].set_xticks([t_start, t_start + 1, t_start+2])
+axa[1].set_xticklabels([0, 1, 2])
+
+
+## Pretty
+# Scale bar
+legend_xval = t_start - .2
+axa[0].plot([legend_xval, legend_xval], [100, 400], 'k-', clip_on=False)
+axa[0].text(legend_xval, 250, f'300 {MU}V', ha='right', va='center', rotation=90)
+axa[1].plot([legend_xval, legend_xval], [10, 40], 'k-', clip_on=False)
+axa[1].text(legend_xval, 25, f'30 {MU}V', ha='right', va='center', rotation=90)
+
+# Labels
+label_xval = t_start - .1
+axa[0].text(label_xval, 900, 'audio', color='k', ha='center', va='center')
+axa[0].text(label_xval, 600, 'LV', color='b', ha='center', va='center')
+axa[0].text(label_xval, 300, 'RV', color='r', ha='center', va='center')
+axa[0].text(label_xval, 0, 'LR', color='k', ha='center', va='center')
+axa[1].text(label_xval, 60, 'LV', color='b', ha='center', va='center')
+axa[1].text(label_xval, 30, 'RV', color='r', ha='center', va='center')
+axa[1].text(label_xval, 0, 'LR', color='k', ha='center', va='center')
+
+# Despine
 for ax in axa[:-1]:
-    my.plot.despine(ax, which=('bottom', 'right', 'top'))
-my.plot.despine(axa[-1])
+    my.plot.despine(ax, which=('left', 'bottom', 'right', 'top'))
+    ax.set_yticks([])
+my.plot.despine(axa[-1], which=('left', 'right', 'top'))
+axa[-1].set_yticks([])
+
+
+## Savefig
+f.savefig('figures/PLOT_RAW_DATA.svg')
+f.savefig('figures/PLOT_RAW_DATA.png', dpi=300)
 
 plt.show()
