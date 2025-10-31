@@ -53,6 +53,13 @@ trial_counts = pandas.read_pickle(
     os.path.join(output_directory, 'trial_counts'))
 
 
+## Drop the positive mice
+big_abrs = big_abrs.drop(
+    ['PizzaSlice2', 'PizzaSlice7', 'OrangeHeart1'], level='mouse')
+trial_counts = trial_counts.drop(
+    ['PizzaSlice2', 'PizzaSlice7', 'OrangeHeart1'], level='mouse')
+
+
 ## Join after_bilateral_HL on big_abrs
 # Join after_HL onto big_abrs
 big_abrs = my.misc.join_level_onto_index(
@@ -82,6 +89,8 @@ sampling_rate = 16000
 # variable later peak.
 big_abr_stds = big_abrs.T.rolling(window=20, center=True, min_periods=1).std().T
 
+
+## Calculate the baseline
 # Use samples -40 to -20 as baseline
 # Generally this should be <0.25 uV, but the actual value depends on how
 # the averaging was done
@@ -91,6 +100,8 @@ big_abr_baseline_rms = big_abr_stds.loc[:, -30].unstack('label')
 # It's lognormal so mean might be skewed. A mean of log could be good
 big_abr_baseline_rms = big_abr_baseline_rms.median(axis=1)
 
+
+## Calculate the evoked 
 # Use samples 22 - 42 as evoked peak
 # Evoked response increases linearly with level in dB
 # Interestingly, each recording appears to be multiplicatively scaled
@@ -98,9 +109,36 @@ big_abr_baseline_rms = big_abr_baseline_rms.median(axis=1)
 # with level, but the variability in log-units is consistent over level.
 big_abr_evoked_rms = big_abr_stds.loc[:, 32].unstack('label')
 
-# TODO: consider smoothing traces before finding threshold crossing
-# TODO: aggregate over recordings and over sessions here, then compute one
-# threshold (rather than averaging thresholds)
+# Aggregate over recordings within a date
+big_abr_evoked_rms = big_abr_evoked_rms.groupby(
+    [lev for lev in big_abr_evoked_rms.index.names if lev != 'recording'],
+    dropna=False,
+    ).mean()
+
+# Aggregate over dates within a mouse * after_HL
+# TODO: consider just taking the first date instead
+big_abr_evoked_rms = big_abr_evoked_rms.groupby(
+    [lev for lev in big_abr_evoked_rms.index.names if lev != 'date'],
+    dropna=False,
+    ).mean()
+
+
+## Calculate the threshold
+# Keep a copy before interpolating
+big_abr_evoked_rms_orig = big_abr_evoked_rms.copy()
+
+# Reindex to 0.1 dB resolution
+new_sound_levels = pandas.Index(np.arange(
+    big_abr_evoked_rms.columns.min(),
+    big_abr_evoked_rms.columns.max() + 1e-6,
+    0.1,
+    ), name=big_abr_evoked_rms.columns.name)
+
+# Interpolate (linearly)
+big_abr_evoked_rms = big_abr_evoked_rms.reindex(
+    new_sound_levels.union(big_abr_evoked_rms.columns), axis=1).interpolate(
+    axis=1, method='index').reindex(new_sound_levels, axis=1)
+assert not big_abr_evoked_rms.isnull().any().any()
 
 # Apply a fixed threshold in uV
 over_thresh = big_abr_evoked_rms.T > 0.3e-6 
@@ -115,7 +153,7 @@ threshold_db = over_thresh.loc[over_thresh.values].groupby(
     lambda df: df.index[0][-1])
 
 # reindex to get those that are never above threshold
-threshold_db = threshold_db.reindex(big_abr_baseline_rms.index)
+threshold_db = threshold_db.reindex(big_abr_evoked_rms.index)
 
 # error check that we always have a threshold
 assert not threshold_db.isnull().any()
@@ -218,12 +256,6 @@ if PLOT_ABR_RMS_OVER_TIME:
         ax.set_yscale('log')
         ax.set_yticks((0.1, 1.0))
 
-        #~ # Mark the evoked period
-        #~ ax.fill_betweenx(
-            #~ y=(.03, 3), 
-            #~ x1=.875, x2=3.375, 
-            #~ color='gray', alpha=.25, lw=0)        
-
         # Nicer log labels
         ax.yaxis.set_major_formatter(matplotlib.ticker.ScalarFormatter())
 
@@ -271,7 +303,7 @@ if PLOT_ABR_RMS_OVER_TIME:
     # Echo
     with open(stats_filename) as fi:
         print(''.join(fi.readlines()))
-1/0
+
 if PLOT_ABR_POWER_VS_LEVEL:
     ## Plot ABR rms power vs sound level for all mice together
     # Both the mean and standard deviation of evoked power strongly increase
@@ -285,19 +317,6 @@ if PLOT_ABR_POWER_VS_LEVEL:
     this_big_abr_evoked_rms = big_abr_evoked_rms.xs(
         False, level='after_HL').droplevel('HL_type')
 
-    # Aggregate over recording within date * mouse
-    avg_thresh = this_threshold_db.groupby(
-        ['channel', 'speaker_side', 'date', 'mouse']).mean()
-    agged_rms = this_big_abr_evoked_rms.groupby(
-        ['channel', 'speaker_side', 'date', 'mouse']).mean()
-
-    # Aggregate over date within mouse
-    # TODO: consider taking only first date
-    avg_thresh = avg_thresh.groupby(
-        ['channel', 'speaker_side', 'mouse']).mean()
-    agged_rms = agged_rms.groupby(
-        ['channel', 'speaker_side', 'mouse']).mean()
-
     # Set up ax_rows and ax_cols
     channel_l = ['LV', 'RV', 'LR']
     speaker_side_l = ['L', 'R']
@@ -310,7 +329,7 @@ if PLOT_ABR_POWER_VS_LEVEL:
         left=.17, right=.89, top=.95, bottom=.15, hspace=.15, wspace=.12)
 
     # Iterate over channel * speaker_side
-    gobj = agged_rms.groupby(['channel', 'speaker_side'])
+    gobj = this_big_abr_evoked_rms.groupby(['channel', 'speaker_side'])
     for (channel, speaker_side), subdf in gobj:
         
         # Drop grouping keys
@@ -328,20 +347,8 @@ if PLOT_ABR_POWER_VS_LEVEL:
             topl = subdf.loc[mouse].copy()
 
             # Get avg threshold for this mouse
-            thresh = avg_thresh.loc[
-                channel].loc[speaker_side].loc[mouse].item()
-
-            #~ # Round mouse_thresh to nearest actual sound level
-            #~ thresh_diffs = np.abs(mouse_evoked.index - mouse_thresh)
-            #~ lowest_diff_idx = np.argmin(thresh_diffs)
-            #~ near_thresh = mouse_evoked.index[lowest_diff_idx]
-
-            #~ # Plot mouse threshold (rounded)
-            #~ if not pandas.isnull(mouse_thresh):
-                #~ ax.semilogy(
-                    #~ [near_thresh],
-                    #~ [mouse_evoked.loc[near_thresh] * 1e6],
-                    #~ 'ro', ms=2.5, alpha=.5)
+            thresh = this_threshold_db.loc[
+                mouse].loc[channel].loc[speaker_side].item()
 
             # Because thresh is a mean over recordings, it doesn't
             # align with evoked RMS. Resample to make the point lie
@@ -360,14 +367,26 @@ if PLOT_ABR_POWER_VS_LEVEL:
         # Despine
         my.plot.despine(ax)
         ax.set_yticks([0.1, 1])
-        ax.set_xticks([50, 70, 90])
+        ax.set_xticks([20, 40, 60])
+        ax.set_xlim((10, 70))
         ax.yaxis.set_major_formatter(matplotlib.ticker.ScalarFormatter())
 
-    # Axis labels on the bottom
-    for ax in axa[2,:]:
-        ax.set_xlabel('sound level (dB)')
-    axa[1,0].set_ylabel('evoked ABR (uV RMS)')
+
+    ## Pretty
+    # Shared axis labes
+    f.text(.52, .01, 'sound level (dB SPL)', ha='center', va='bottom')
+    f.text(
+        .02, .56, f'response strength ({MU}V rms)', 
+        rotation=90, ha='center', va='center')
+
+    # Label the channel
+    for n_channel, channel in enumerate(channel_l):
+        axa[n_channel, 0].set_ylabel(channel)
     
+    # Label the speaker side
+    axa[0, 0].set_title('sound from left')
+    axa[0, 1].set_title('sound from right')
+
     
     ## Savefig
     f.savefig('figures/PLOT_ABR_POWER_VS_LEVEL.svg')
@@ -375,21 +394,25 @@ if PLOT_ABR_POWER_VS_LEVEL:
 
 
     ## Stats
-    n_mice = len(agged_rms.index.get_level_values('mouse').unique())
-    stats_filename = 'figures/PLOT_ABR_POWER_VS_LEVEL'
+    n_mice = len(this_threshold_db.index.get_level_values('mouse').unique())
+    stats_filename = 'figures/STATS__PLOT_ABR_POWER_VS_LEVEL'
     with open(stats_filename, 'w') as fi:
         fi.write(stats_filename + '\n')
         fi.write(f'n = {n_mice} mice, pre-HL only\n')
         fi.write(
             'mean power vs level over recordings within date, '
             'then mean over date within mouse.\n'
-            'mean threshold in the same way as above. then interpolate '
-            'the meaned threshold onto the power vs level curve\n'
+            'computed one threshold (interpolated) per mouse\n'
             )
     
     # Echo
     with open(stats_filename) as fi:
         print(''.join(fi.readlines()))
+        
+    # TODO: grouped bar plot on thresholds
+    # my.plot.grouped_bar_plot(
+    #   this_threshold_db.unstack('mouse'), index2plot_kwargs=lambda idx: 
+    #   {'fc': 'b' if idx['speaker_side'] == 'L' else 'r'})
 
 if PLOT_ABR_POWER_VS_LEVEL_AFTER_HL:
     ## Plot sham and bilateral pre- and post-HL
@@ -414,45 +437,51 @@ if PLOT_ABR_POWER_VS_LEVEL_AFTER_HL:
         [lev for lev in big_abr_evoked_rms_agg.index.names if lev != 'date']
         ).mean()
         
-    # To iterate over
+    
+    ## To iterate over
     channel_l = ['LV', 'RV', 'LR']
     speaker_side_l = ['L', 'R']
-    HL_type_l = ['sham', 'bilateral']
+    HL_type_l = ['bilateral', 'sham']
     after_HL_l = [False, True]
     
-    # Iterate over HL_type (figures)
-    for HL_type in HL_type_l:
+    
+    ## Plot
+    # Iterate over speaker_side (figures)
+    for speaker_side in speaker_side_l:
         
-        ## Plot evoked RMS vs level
+        ## First figure: evoked power vs sound level
         f, axa = plt.subplots(
-            len(channel_l), len(speaker_side_l),
+            len(channel_l), len(HL_type_l),
             sharex=True, sharey=True, figsize=(5, 4))
         f.subplots_adjust(
             left=.17, right=.89, top=.95, bottom=.15, hspace=.15, wspace=.12)
 
-        # Iterate over channel * speaker_side
-        gobj = big_abr_evoked_rms_agg.xs(HL_type, level='HL_type').groupby(
-            ['channel','speaker_side'])
-        for (channel, speaker_side), subdf in gobj:
+        # Iterate over channel * HL_type
+        gobj = big_abr_evoked_rms_agg.xs(
+            speaker_side, level='speaker_side').groupby(
+            ['channel', 'HL_type'])
+        for (channel, HL_type), subdf in gobj:
             
             # Get ax
             ax = axa[
                 channel_l.index(channel),
-                speaker_side_l.index(speaker_side),
+                HL_type_l.index(HL_type),
             ]
             
+            # Drop grouping keys
+            subdf = subdf.droplevel(['channel', 'HL_type'])
+    
             # Iterate over mice
             for mouse in subdf.index.get_level_values('mouse').unique():
                 
                 # Iterate over after_HL
                 for after_HL in after_HL_l:
-                    
+
                     # Color by after_HL
-                    color = 'b' if after_HL else 'orange'
+                    color = 'magenta' if after_HL else 'green'
                     
                     # Slice evoked RMS and threshold
-                    topl = subdf.loc[after_HL].loc[mouse].loc[channel].loc[
-                        speaker_side]
+                    topl = subdf.loc[after_HL].loc[mouse]
                     thresh = threshold_db_agg.loc[
                         HL_type].loc[after_HL].loc[mouse].loc[channel].loc[
                         speaker_side].item()                
@@ -470,37 +499,50 @@ if PLOT_ABR_POWER_VS_LEVEL_AFTER_HL:
                         [thresh], [thresh_y * 1e6], 
                         marker='o', color=color, mfc='none')
 
+            # Label the y-axis with the channel
+            if ax in axa[:, 0]:
+                ax.set_ylabel(channel)
+            if ax == axa[1, 0]:
+                ax.set_ylabel(f'responses strength ({MU}V)\n{channel}')
+            
             # Despine
             my.plot.despine(ax)
             ax.set_yticks([0.1, 1])
-            ax.set_xticks([50, 70, 90])
+            ax.set_xticks([20, 40, 60])
             ax.yaxis.set_major_formatter(matplotlib.ticker.ScalarFormatter())
 
-        # Axis labels on the bottom
-        for ax in axa[2,:]:
-            ax.set_xlabel('sound level (dB)')
-        axa[1,0].set_ylabel('evoked ABR (uV RMS)')
+        # Shared x-axis
+        f.text(.52, .01, 'sound level (dB SPL)', ha='center', va='bottom')
+
+        # Label the HL_type
+        axa[0, 0].set_title(HL_type_l[0])
+        axa[0, 1].set_title(HL_type_l[1])
         
+        # Legend
+        f.text(.95, .6, 'pre', color='green', ha='center', va='center')
+        f.text(.95, .54, 'post', color='magenta', ha='center', va='center')
+
         # Savefig
-        savename = f'figures/PLOT_ABR_POWER_VS_LEVEL_AFTER_HL__{HL_type}'
+        savename = f'figures/PLOT_ABR_POWER_VS_LEVEL_AFTER_HL__{speaker_side}'
         f.savefig(savename + '.svg')
         f.savefig(savename + '.png', dpi=300)        
         
         
         ## Second plot of threshold
         f, axa = plt.subplots(
-            len(channel_l), len(speaker_side_l),
+            len(channel_l), len(HL_type_l),
             sharex=True, sharey=True, figsize=(5, 4))
         f.subplots_adjust(
             left=.17, right=.89, top=.95, bottom=.15, hspace=.15, wspace=.12)
 
-        # Iterate over channel * speaker_side
-        gobj = threshold_db_agg.xs(HL_type, level='HL_type').groupby(
-            ['channel','speaker_side'])
-        for (channel, speaker_side), subdf in gobj:
+        # Iterate over channel * HL_type
+        gobj = threshold_db_agg.xs(
+            speaker_side, level='speaker_side').groupby(
+            ['channel', 'HL_type'])
+        for (channel, HL_type), subdf in gobj:
             
             # Drop grouping keys
-            subdf = subdf.droplevel(['channel', 'speaker_side'])
+            subdf = subdf.droplevel(['channel', 'HL_type'])
             
             # Get mouse on columns
             subdf = subdf.unstack('mouse')
@@ -511,69 +553,107 @@ if PLOT_ABR_POWER_VS_LEVEL_AFTER_HL:
             # Get ax
             ax = axa[
                 channel_l.index(channel),
-                speaker_side_l.index(speaker_side),
+                HL_type_l.index(HL_type),
             ]        
             
             # Plot
             ax.plot(subdf.values, ls='-', marker='o', color='k', mfc='none')
+
+            # Label the y-axis with the channel
+            if ax in axa[:, 0]:
+                ax.set_ylabel(channel)
+            if ax == axa[1, 0]:
+                ax.set_ylabel(f'threshold (dB SPL)\n{channel}')
             
             # Despine
             my.plot.despine(ax)
+
+        # Shared x-axis
+        f.text(.52, .01, 'before or after hearing loss', ha='center', va='bottom')
+
+        # Label the HL_type
+        axa[0, 0].set_title(HL_type_l[0])
+        axa[0, 1].set_title(HL_type_l[1])
         
         # Consistent axis limits
-        ax.set_ylim((50, 85))
-        ax.set_yticks((50, 65, 80))
+        ax.set_ylim((10, 60))
+        ax.set_yticks((20, 35, 50))
         ax.set_xticks((0, 1))
         ax.set_xlim((-.5, 1.5))
         ax.set_xticklabels(('pre', 'post'))
         
         # Savefig
-        savename = f'figures/PLOT_ABR_POWER_VS_LEVEL_AFTER_HL__thresh__{HL_type}'
+        savename = f'figures/PLOT_ABR_POWER_VS_LEVEL_AFTER_HL__thresh__{speaker_side}'
         f.savefig(savename + '.svg')
         f.savefig(savename + '.png', dpi=300)
-    
+
 
 if BASELINE_VS_N_TRIALS:
     ## Plot the noise level as a function of trial count
     
-    # Take the noise level as the baselie rms (median over levels)
-    noise_by_config = big_abr_baseline_rms
+    # Take the noise level as the baseline rms (median over levels)
+    # Only slightly higher in LR (80 nV vs 75 nV) so pool over channels
+    med_baseline_rms = big_abr_baseline_rms
 
     # Take the trial count as the median over levels
     med_trial_count = trial_counts.unstack('label').median(axis=1)
 
     # Concat these two so they line up
     joined = med_trial_count.rename(
-        'trial_count').to_frame().join(noise_by_config.rename('noise'))
+        'trial_count').to_frame().join(med_baseline_rms.rename('noise'))
 
-    # Take the evoked signal by level
-    evoked_by_level = big_abr_evoked_rms.median()
-
-    fit = 1.1e-7 * np.sqrt(100) / np.sqrt(med_trial_count)
-
+    # Plot
     f, ax = my.plot.figure_1x1_standard()
     ax.plot(
         np.log10(joined['trial_count']), 
         np.log10(joined['noise'] * 1e9), # log(nV)
         color='k', marker='o', mfc='none', ls='none', alpha=.3)
 
-    ax.set_xticks((1.5, 2, 2.5))
+    # Pretty
+    my.plot.despine(ax)
+    ax.set_xticks(np.log10([30, 100, 300]))
     ax.set_xticklabels((30, 100, 300))
-    ax.set_yticks((1.5, 2, 2.5)) # log(nV)
+    ax.set_yticks(np.log10([30, 100, 300])) # log(nV)
     ax.set_yticklabels((0.03, 0.1, 0.3))
     ax.axis('scaled')
     ax.set_ylim((1.4, 2.6))
-    ax.set_xlim((1.2, 2.7))
-    ax.set_ylabel('RMS of baseline\nin trial average (uV)')
+    ax.set_xlim((1.2, 2.8))
+
+    # Labels
+    ax.set_ylabel(f'baseline ({MU}V rms)')
     ax.set_xlabel('number of trials')
 
-    my.plot.despine(ax)
-    #~ for label, evoked in evoked_by_level[:3].items():
-        #~ ax.plot(np.log10([50, 250]), np.log10([evoked * 1e9, evoked * 1e9]), '-')
+    # Plot a slope line
+    # TODO: actually fit this and extract slope
+    ax.plot(np.log10([10, 1000]), np.log10([300, 30]) - .2, 'k--', lw=.75)    
 
+    # Savefig
     f.savefig('figures/BASELINE_VS_N_TRIALS.svg')
     f.savefig('figures/BASELINE_VS_N_TRIALS.png', dpi=300)
 
+
+    ## Stats
+    n_recordings_channels = len(joined)
+    n_recordings = n_recordings_channels // 3
+    n_mice = len(joined.index.get_level_values('mouse').unique())
+    stats_filename = 'figures/STATS__BASELINE_VS_N_TRIALS'
+    with open(stats_filename, 'w') as fi:
+        fi.write(stats_filename + '\n')
+        fi.write(
+            f'n = {n_recordings} recordings * 3 channels = '
+            f'{n_recordings_channels} points from {n_mice} mice, '
+            'pre- and post-HL\n'
+            )
+        fi.write(
+            'trial count is median over sound level\n'
+            'baseline is rms in the (-2.5, -1.25) ms range, '
+            'median over sound level\n'
+            )
+    
+    # Echo
+    with open(stats_filename) as fi:
+        print(''.join(fi.readlines()))
+    
 
 if HISTOGRAM_EVOKED_RMS_BY_LEVEL:
     # Plot a histogram of the evoked signal by level, to aid in choosing
@@ -584,26 +664,28 @@ if HISTOGRAM_EVOKED_RMS_BY_LEVEL:
     # Set the bins
     bins = np.linspace(-8, -4, 101)
     
+    # Plot hist
     f, ax = my.plot.figure_1x1_standard()
     ax.hist(
-        np.log10(big_abr_evoked_rms.values), 
+        np.log10(big_abr_evoked_rms_orig.values), 
         histtype='step', cumulative=True, bins=bins, density=True) 
 
-    ax.hist(
-        np.log10(big_abr_baseline_rms.values), 
-        histtype='step', cumulative=True, bins=bins, density=True, color='k') 
-
+    # Pretty
     ax.set_ylim((0, 1))
     ax.set_yticks((0, .5, 1))
     ax.set_xlim((-8, -5))
     ax.set_xticks((-8, -7, -6, -5))
     ax.set_xticklabels(('10nV', '100nV', '1uV', '10uV'))
     my.plot.despine(ax)
-    f.text(.9, .7, 'baseline', color='k', ha='center', va='center')
-    f.text(.9, .6, '49 dB', color='b', ha='center', va='center')
-    f.text(.9, .5, 'etc', color='orange', ha='center', va='center')
-    ax.plot([-6.5, -6.5], [-.1, 1.1], color='gray', ls='--', clip_on=False)
-    ax.set_xlabel('evoked signal (RMS)')
+    
+    # Labels
+    #~ f.text(.9, .7, 'baseline', color='k', ha='center', va='center')
+    #~ f.text(.9, .6, '49 dB', color='b', ha='center', va='center')
+    #~ f.text(.9, .5, 'etc', color='orange', ha='center', va='center')
+
+    # Plot the threshold we will use 
+    ax.plot(np.log10([0.3e-6, 0.3e-6]), [-.1, 1.1], color='gray', ls='--', clip_on=False)
+    ax.set_xlabel('response strength (RMS)')
     ax.set_ylabel('fraction of recordings')
 
     f.savefig('figures/HISTOGRAM_EVOKED_RMS_BY_LEVEL.svg')
