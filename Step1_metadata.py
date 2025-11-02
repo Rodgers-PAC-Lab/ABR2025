@@ -13,6 +13,10 @@
 #   experiment_metadata : one row per experiment (mouse * date)
 #   recording_metadata: one row per recording, indexed by date * mouse * recording
 
+# TODO: 
+# mouse_metadata['HL_type'] = mouse_metadata['HL_type'].fillna('none')
+
+
 import os
 import datetime
 import glob
