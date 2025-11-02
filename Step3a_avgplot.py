@@ -25,6 +25,7 @@ import matplotlib.pyplot as plt
 ## Plots
 my.plot.manuscript_defaults()
 my.plot.font_embed()
+MU = chr(956)
 
 
 ## Paths
@@ -39,9 +40,6 @@ output_directory = paths['output_directory']
 
 ## Params
 sampling_rate = 16000
-
-# Loudest dB
-loudest_db = 93
 
 
 ## Load previous results
@@ -61,7 +59,10 @@ mouse_metadata['HL_type'] = mouse_metadata['HL_type'].fillna('none')
 # Load results of Step2
 big_abrs = pandas.read_pickle(
     os.path.join(output_directory, 'big_abrs'))
-    
+
+# Loudest dB
+loudest_db = big_abrs.index.get_level_values('label').max()
+  
 
 ## Join HL metadata on big_abrs
 # Join after_HL onto big_abrs
@@ -79,23 +80,27 @@ big_abrs = my.misc.join_level_onto_index(
     )
 
 
+## Drop the positive mice
+big_abrs = big_abrs.drop(
+    ['PizzaSlice2', 'PizzaSlice7', 'OrangeHeart1'], level='mouse')
+    
+
 ## Aggregate over recordings for each ABR
 # TODO: do this upstream
-averaged_abrs = big_abrs.groupby(
+averaged_abrs_by_date = big_abrs.groupby(
     [lev for lev in big_abrs.index.names if lev != 'recording']
     ).mean()
 
-# Calculate the grand average (averaging out date and mouse)
-grand_average = averaged_abrs.groupby(
-    [lev for lev in averaged_abrs.index.names if lev not in ['date', 'mouse']]
+averaged_abrs_by_mouse = averaged_abrs_by_date.groupby(
+    [lev for lev in averaged_abrs_by_date.index.names if lev != 'date']
     ).mean()
 
 
 ## Cross-correlate over level to measure delay
 rec_l = []
 rec_keys_l = []
-grouping_keys = [lev for lev in averaged_abrs.index.names if lev != 'label']
-for (grouped_keys), subdf in averaged_abrs.groupby(grouping_keys):
+grouping_keys = [lev for lev in averaged_abrs_by_mouse.index.names if lev != 'label']
+for (grouped_keys), subdf in averaged_abrs_by_mouse.groupby(grouping_keys):
     
     # Droplevel, leaving only label
     subdf = subdf.droplevel(grouping_keys)
@@ -148,43 +153,45 @@ corr_df = corr_df[corr_df.index.get_level_values('label') >= 52]
 
 
 ## Plots
-GRAND_AVG_ABR_PLOT = True
-GRAND_AVG_IMSHOW = True
-GRAND_AVG_IPSI_VS_CONTRA = True
-GRAND_AVG_LR_LEFT_VS_RIGHT = True
-GRAND_AVG_ONE_SIDE_ONLY = True
+GRAND_AVG_ABR_PLOT = False
+GRAND_AVG_ABR_PLOT_PERI_HL = False
+GRAND_AVG_IMSHOW = False
+GRAND_AVG_IMSHOW_PERI_HL = False
+GRAND_AVG_IPSI_VS_CONTRA = False
+GRAND_AVG_LR_LEFT_VS_RIGHT = False
+GRAND_AVG_ONE_SIDE_ONLY = False
 PLOT_DELAY_VS_LEVEL = True
-
-# Define a global t-axis for all plots
-t = averaged_abrs.columns / sampling_rate * 1000
 
 if GRAND_AVG_ABR_PLOT:
     ## Plot the grand average ABR for every channel * speaker_side
     # Do this in three ways: control, sham, bilateral
-    for plot_type in ['healthy', 'sham', 'bilateral']:
+    for plot_type in ['healthy']:#, 'sham', 'bilateral']:
         
         ## Slice data
         if plot_type == 'healthy':
             # This will include mice that never received HL
-            this_averaged_abrs = averaged_abrs.xs(
+            this_averaged_abrs = averaged_abrs_by_mouse.xs(
                 False, level='after_HL').droplevel('HL_type')
         
         elif plot_type == 'sham':
-            this_averaged_abrs = averaged_abrs.xs(
+            this_averaged_abrs = averaged_abrs_by_mouse.xs(
                 True, level='after_HL').xs('sham', level='HL_type')
         
         elif plot_type == 'bilateral':
-            this_averaged_abrs = averaged_abrs.xs(
+            this_averaged_abrs = averaged_abrs_by_mouse.xs(
                 True, level='after_HL').xs('bilateral', level='HL_type')
         
         else:
             1/0
 
-        # Calculate the grand average (averaging out date and mouse)
-        # TODO: aggregate first over date and then over mouse
+        # Calculate the grand average (averaging out mouse)
         this_grand_average = this_averaged_abrs.groupby(
-            [lev for lev in this_averaged_abrs.index.names if lev not in ['date', 'mouse']]
+            [lev for lev in this_averaged_abrs.index.names if lev != 'mouse']
             ).mean()
+
+        # Slice temporally
+        this_grand_average = this_grand_average.loc[:, -16:112]
+        this_t = this_grand_average.columns / sampling_rate * 1000
 
         # Count mice
         n_mice = len(this_averaged_abrs.index.get_level_values('mouse').unique())
@@ -211,7 +218,7 @@ if GRAND_AVG_ABR_PLOT:
         # Group
         gobj = this_grand_average.groupby(['channel', 'speaker_side'])
         
-        # Iterate over gruops
+        # Iterate over groups
         for (channel, speaker_side), subdf in gobj:
             # Get ax
             ax = axa[
@@ -225,9 +232,15 @@ if GRAND_AVG_ABR_PLOT:
             # Plot each label, ending with the softest
             for n_label, label in enumerate(label_l):
                 ax.plot(
-                    t, topl.loc[label] * 1e6, 
-                    lw=.75, color=aut_colorbar[n_label],
+                    this_t, 
+                    topl.loc[label] * 1e6, 
+                    lw=.75, 
+                    color=aut_colorbar[n_label],
+                    clip_on=False,
                     )
+            
+            # Invisible background
+            ax.set_facecolor('none')
             
             # Despine 
             if ax in axa[-1]:
@@ -240,23 +253,23 @@ if GRAND_AVG_ABR_PLOT:
             if np.mod(n_label, 2) != 0:
                 continue
             f.text(
-                .95, .85 - n_label * .02, f'{label} dB',
+                .95, .68 - n_label * .02, f'{label} dB',
                 color=color, ha='center', va='center', size=12)
 
         # Pretty
         ax.set_xlim((-1, 7))
-        ax.set_ylim((-3.3, 3.3))
+        ax.set_ylim((-2.5, 2.5))
         ax.set_xticks([0, 3, 6])
         ax.set_yticks([])
         f.text(.51, .01, 'time (ms)', ha='center', va='bottom')
 
         # Scale bar
-        axa[0, -1].plot([6, 6], [1, 2], 'k-', lw=.75)
-        axa[0, -1].text(6.2, 1.5, '1 uV', ha='left', va='center', size=12)
+        axa[0, -1].plot([5, 5], [1, 2], 'k-', lw=.75, clip_on=False)
+        axa[0, -1].text(5.2, 1.5, f'1 {MU}V', ha='left', va='center', size=12)
         
         # Label the channel
         for n_channel, channel in enumerate(channel_l):
-            axa[n_channel, 0].set_ylabel(channel, labelpad=20)
+            axa[n_channel, 0].set_ylabel(channel)
         
         # Label the speaker side
         axa[0, 0].set_title('sound from left')
@@ -275,6 +288,130 @@ if GRAND_AVG_ABR_PLOT:
             fi.write(f'n = {n_mice} mice\n')
         
         # Echo
+        print(stats_filename)
+        with open(stats_filename) as fi:
+            print(''.join(fi.readlines()))
+
+if GRAND_AVG_ABR_PLOT_PERI_HL:
+    ## Plot the grand average ABR for each speaker_side
+
+    # Slice data for this analysis - after_HL only
+    averaged_abrs_peri_HL = averaged_abrs_by_mouse.drop(
+        'none', level='HL_type').xs(True, level='after_HL')  
+    
+    # Separate figures for each speaker_side
+    for speaker_side in ['L', 'R']:
+        
+        # Slice speaker_side
+        this_averaged_abrs = averaged_abrs_peri_HL.xs(
+            speaker_side, level='speaker_side')
+
+        # Calculate the grand average (averaging out mouse)
+        this_grand_average = this_averaged_abrs.groupby(
+            [lev for lev in this_averaged_abrs.index.names if lev != 'mouse']
+            ).mean()
+        
+        # Slice temporally
+        this_grand_average = this_grand_average.loc[:, -16:112]
+        this_t = this_grand_average.columns / sampling_rate * 1000
+
+        # Count mice by HL_type
+        n_mice = this_averaged_abrs.groupby(
+            ['HL_type', 'mouse']).size().groupby(['HL_type']).size()
+        
+        
+        ## Set up plot
+        # Set up ax_rows and ax_cols
+        channel_l = ['LV', 'RV', 'LR']
+        HL_type_l = ['bilateral', 'sham']
+
+        # Set up colorbar
+        # Always do the lowest labels last
+        label_l = sorted(
+            this_grand_average.index.get_level_values('label').unique(), 
+            reverse=True)
+        aut_colorbar = paclab.abr.abr_plotting.generate_colorbar(
+            len(label_l), mapname='inferno_r', start=0.15, stop=1)[::-1]
+        
+        # Make handles
+        f, axa = plt.subplots(3, 2, sharex=True, sharey=True, figsize=(5.4, 4))
+        f.subplots_adjust(
+            left=.1, right=.9, top=.95, bottom=.12, hspace=0.06, wspace=0.2)
+
+        # Group
+        gobj = this_grand_average.groupby(['channel', 'HL_type'])
+        
+        # Iterate over groups
+        for (channel, HL_type), subdf in gobj:
+            # Get ax
+            ax = axa[
+                channel_l.index(channel),
+                HL_type_l.index(HL_type),
+                ]
+            
+            # Drop the grouping keys
+            topl = subdf.droplevel(['channel', 'HL_type']).copy()
+            
+            # Plot each label, ending with the softest
+            for n_label, label in enumerate(label_l):
+                ax.plot(
+                    this_t, 
+                    topl.loc[label] * 1e6, 
+                    lw=.75, 
+                    color=aut_colorbar[n_label],
+                    clip_on=False,
+                    )
+            
+            # Invisible background
+            ax.set_facecolor('none')
+            
+            # Despine 
+            if ax in axa[-1]:
+                my.plot.despine(ax, which=('left', 'right', 'top'))
+            else:
+                my.plot.despine(ax, which=('left', 'right', 'top', 'bottom'))
+
+        # Legend
+        for n_label, (label, color) in enumerate(zip(label_l, aut_colorbar)):
+            if np.mod(n_label, 2) != 0:
+                continue
+            f.text(
+                .95, .68 - n_label * .02, f'{label} dB',
+                color=color, ha='center', va='center', size=12)
+
+        # Pretty
+        ax.set_xlim((-1, 7))
+        ax.set_ylim((-2.5, 2.5))
+        ax.set_xticks([0, 3, 6])
+        ax.set_yticks([])
+        f.text(.51, .01, 'time (ms)', ha='center', va='bottom')
+
+        # Scale bar
+        axa[0, -1].plot([5, 5], [1, 2], 'k-', lw=.75, clip_on=False)
+        axa[0, -1].text(5.2, 1.5, f'1 {MU}V', ha='left', va='center', size=12)
+        
+        # Label the channel
+        for n_channel, channel in enumerate(channel_l):
+            axa[n_channel, 0].set_ylabel(channel)
+        
+        # Label the HL_type
+        axa[0, 0].set_title(HL_type_l[0])
+        axa[0, 1].set_title(HL_type_l[1])
+        
+        
+        ## Save figure
+        savename = f'figures/GRAND_AVG_ABR_PLOT_PERI_HL__{speaker_side}'
+        f.savefig(savename + '.svg')
+        f.savefig(savename + '.png', dpi=300)
+
+        
+        ## Stats
+        stats_filename = f'figures/STATS__GRAND_AVG_ABR_PLOT_PERI_HL__{speaker_side}'
+        with open(stats_filename, 'w') as fi:
+            fi.write(f'n = {n_mice} mice\n')
+        
+        # Echo
+        print(stats_filename)
         with open(stats_filename) as fi:
             print(''.join(fi.readlines()))
 
@@ -285,23 +422,23 @@ if GRAND_AVG_IMSHOW:
         
         ## Slice data
         if plot_type == 'healthy':
-            this_averaged_abrs = averaged_abrs.xs(
+            this_averaged_abrs = averaged_abrs_by_mouse.xs(
                 False, level='after_HL').droplevel('HL_type')
         
         elif plot_type == 'sham':
-            this_averaged_abrs = averaged_abrs.xs(
+            this_averaged_abrs = averaged_abrs_by_mouse.xs(
                 True, level='after_HL').xs('sham', level='HL_type')
         
         elif plot_type == 'bilateral':
-            this_averaged_abrs = averaged_abrs.xs(
+            this_averaged_abrs = averaged_abrs_by_mouse.xs(
                 True, level='after_HL').xs('bilateral', level='HL_type')
         
         else:
             1/0
 
-        # Calculate the grand average (averaging out date and mouse)
+        # Calculate the grand average (averaging out mouse)
         this_grand_average = this_averaged_abrs.groupby(
-            [lev for lev in this_averaged_abrs.index.names if lev not in ['date', 'mouse']]
+            [lev for lev in this_averaged_abrs.index.names if lev != 'mouse']
             ).mean()
         
         # Set up ax_rows and ax_cols
@@ -314,9 +451,9 @@ if GRAND_AVG_IMSHOW:
             left=.18, right=.98, top=.95, bottom=.12, hspace=0.2, wspace=0.2)
 
         # Separate figure just for colorbar
-        f_cb, ax_cb = plt.subplots(figsize=(1, 4.8))
+        f_cb, ax_cb = plt.subplots(figsize=(.7, 3.2))
         f_cb.subplots_adjust(
-            left=.3, right=.5, top=.95, bottom=.12)
+            left=.07, right=.22, top=.95, bottom=.12)
 
         # Group
         gobj = this_grand_average.groupby(['channel', 'speaker_side'])
@@ -335,7 +472,7 @@ if GRAND_AVG_IMSHOW:
             # Imshow
             im = my.plot.imshow(
                 topl * 1e6, 
-                x=t,
+                x=topl.columns / sampling_rate * 1000,
                 y=topl.index.get_level_values('label'), 
                 center_clim=True, 
                 origin='lower', 
@@ -343,7 +480,7 @@ if GRAND_AVG_IMSHOW:
                 )
             
             # Pretty
-            ax.set_yticks((50, 90))
+            ax.set_yticks((20, 60))
             ax.set_xticks((0, 3, 6))
             ax.set_xlim((-1, 7))
         
@@ -353,40 +490,153 @@ if GRAND_AVG_IMSHOW:
         
         # Add the color bar
         cb = f.colorbar(im, cax=ax_cb)
+        ax_cb.set_ylabel(f'ABR ({MU}V)')
 
         # Label the channel
         for n_channel, channel in enumerate(channel_l):
-            axa[n_channel, 0].set_ylabel(
-                channel, labelpad=40, rotation=0, va='center')
+            axa[n_channel, 0].set_ylabel(channel)
+        axa[1, 0].set_ylabel(f'sound level (dB SPL)\n{channel_l[1]}')
         
         # Label the speaker side
         axa[0, 0].set_title('sound from left')
         axa[0, 1].set_title('sound from right')
 
-        # Shared y-label
-        f.text(
-            .11, .53, 'sound level (dB SPL)', 
-            ha='center', va='center', rotation=90)
-        
         # Shared x-label
-        f.text(.51, .01, 'time (ms)', ha='center', va='bottom')
+        f.text(.58, .01, 'time (ms)', ha='center', va='bottom')
 
-        # Save figure
+        
+        ## Save figure
         savename = f'figures/GRAND_AVG_IMSHOW__{plot_type}'
         f.savefig(savename + '.svg')
         f.savefig(savename + '.png', dpi=300)
         f_cb.savefig(savename + '.colorbar.svg')
         f_cb.savefig(savename + '.colorbar.png', dpi=300)
 
+        
+        ## Stats
+        n_mice = len(this_averaged_abrs.index.get_level_values('mouse').unique())
+        
+        stats_filename = f'figures/STATS__GRAND_AVG_IMSHOW__{plot_type}'
+        with open(stats_filename, 'w') as fi:
+            fi.write(f'n = {n_mice} mice\n')
+        
+        # Echo
+        print(stats_filename)
+        with open(stats_filename) as fi:
+            print(''.join(fi.readlines()))
+
+if GRAND_AVG_IMSHOW_PERI_HL:
+    ## Plot the grand average ABR as an imshow for each channel * after_HL
+
+    # Slice data for this analysis - after_HL only
+    averaged_abrs_peri_HL = averaged_abrs_by_mouse.drop(
+        'none', level='HL_type').xs(True, level='after_HL')  
+    
+    # Separate figures for each speaker_side
+    for speaker_side in ['L', 'R']:
+        
+        # Slice speaker_side
+        this_averaged_abrs = averaged_abrs_peri_HL.xs(
+            speaker_side, level='speaker_side')
+
+        # Calculate the grand average (averaging out mouse)
+        this_grand_average = this_averaged_abrs.groupby(
+            [lev for lev in this_averaged_abrs.index.names if lev != 'mouse']
+            ).mean()
+        
+        # Set up ax_rows and ax_cols
+        channel_l = ['LV', 'RV', 'LR']
+        HL_type_l = ['bilateral', 'sham']
+
+        # Make handles
+        f, axa = plt.subplots(3, 2, sharex=True, sharey=True, figsize=(5.4, 4))
+        f.subplots_adjust(
+            left=.18, right=.98, top=.95, bottom=.12, hspace=0.2, wspace=0.2)
+
+        # Separate figure just for colorbar
+        f_cb, ax_cb = plt.subplots(figsize=(.7, 3.2))
+        f_cb.subplots_adjust(
+            left=.07, right=.22, top=.95, bottom=.12)
+
+        # Group
+        gobj = this_grand_average.groupby(['channel', 'HL_type'])
+        
+        # Iterate over groups
+        for (channel, HL_type), subdf in gobj:
+            # Get ax
+            ax = axa[
+                channel_l.index(channel),
+                HL_type_l.index(HL_type),
+                ]
+            
+            # Drop the grouping keys
+            topl = subdf.droplevel(['channel', 'HL_type']).copy()
+
+            # Imshow
+            im = my.plot.imshow(
+                topl * 1e6, 
+                x=topl.columns / sampling_rate * 1000,
+                y=topl.index.get_level_values('label'), 
+                center_clim=True, 
+                origin='lower', 
+                ax=ax,
+                )
+            
+            # Pretty
+            ax.set_yticks((20, 60))
+            ax.set_xticks((0, 3, 6))
+            ax.set_xlim((-1, 7))
+        
+        # Harmonize clim
+        my.plot.harmonize_clim_in_subplots(
+            fig=f, center_clim=True, clim=(-3, 3), trim=.999)
+        
+        # Add the color bar
+        cb = f.colorbar(im, cax=ax_cb)
+        ax_cb.set_ylabel(f'ABR ({MU}V)')
+
+        # Label the channel
+        for n_channel, channel in enumerate(channel_l):
+            axa[n_channel, 0].set_ylabel(channel)
+        axa[1, 0].set_ylabel(f'sound level (dB SPL)\n{channel_l[1]}')
+        
+        # Label the speaker side
+        axa[0, 0].set_title(HL_type_l[0])
+        axa[0, 1].set_title(HL_type_l[1])
+
+        # Shared x-label
+        f.text(.58, .01, 'time (ms)', ha='center', va='bottom')
+
+        
+        ## Save figure
+        savename = f'figures/GRAND_AVG_IMSHOW_PERI_HL__{speaker_side}'
+        f.savefig(savename + '.svg')
+        f.savefig(savename + '.png', dpi=300)
+        f_cb.savefig(savename + '.colorbar.svg')
+        f_cb.savefig(savename + '.colorbar.png', dpi=300)
+
+        
+        ## Stats
+        n_mice = len(this_averaged_abrs.index.get_level_values('mouse').unique())
+        
+        stats_filename = f'figures/STATS__GRAND_AVG_IMSHOW_PERI_HL__{speaker_side}'
+        with open(stats_filename, 'w') as fi:
+            fi.write(f'n = {n_mice} mice\n')
+        
+        # Echo
+        print(stats_filename)
+        with open(stats_filename) as fi:
+            print(''.join(fi.readlines()))
+
 if GRAND_AVG_IPSI_VS_CONTRA:
     ## Slice data
     # For this analysis, use only after_HL == False
-    this_averaged_abrs = averaged_abrs.xs(
+    this_averaged_abrs = averaged_abrs_by_mouse.xs(
         False, level='after_HL').droplevel('HL_type')    
 
-    # Calculate the grand average (averaging out date and mouse)
+    # Average over mouse
     this_grand_average = this_averaged_abrs.groupby(
-        [lev for lev in this_averaged_abrs.index.names if lev not in ['date', 'mouse']]
+        [lev for lev in this_averaged_abrs.index.names if lev != 'mouse']
         ).mean()
     
     # Slice loudest sound
@@ -400,28 +650,29 @@ if GRAND_AVG_IPSI_VS_CONTRA:
     # Plot each
     # green=ipsi, pink=contra
     # solid=left speaker, dashed=right speaker
+    this_t = loudest.columns / sampling_rate * 1000
     ax.plot(
-        t, loudest.loc['LV'].loc['L'], color='green', ls='-', lw=1)
+        this_t, loudest.loc['LV'].loc['L'], color='green', ls='-', lw=1)
     ax.plot(
-        t, loudest.loc['RV'].loc['R'], color='green', ls='--', lw=1)
+        this_t, loudest.loc['RV'].loc['R'], color='green', ls='--', lw=1)
     
     ax.plot(
-        t, loudest.loc['LV'].loc['R'], color='magenta', ls='--', lw=1)
+        this_t, loudest.loc['LV'].loc['R'], color='magenta', ls='--', lw=1)
     ax.plot(
-        t, loudest.loc['RV'].loc['L'], color='magenta', ls='-', lw=1)
+        this_t, loudest.loc['RV'].loc['L'], color='magenta', ls='-', lw=1)
     
     # Legend
-    ax.text(6, 4, 'ipsi', color='green', ha='center', size=12)
-    ax.text(6, 3, 'contra', color='magenta', ha='center', size=12)
+    ax.text(6, 3, 'ipsi', color='green', ha='center', size=12)
+    ax.text(6, 2, 'contra', color='magenta', ha='center', size=12)
     
     # Pretty
     my.plot.despine(ax)
     ax.set_title('LV and RV')
     ax.set_xlim(-1, 7)
-    ax.set_xticks((0, 3, 6))
-    ax.set_ylim(-4, 4)
-    ax.set_yticks((-4, 0, 4))
-    ax.set_ylabel('ABR (uV)')
+    ax.set_xticks((0, 2, 4, 6))
+    ax.set_ylim(-3, 3)
+    ax.set_yticks((-3, 0, 3))
+    ax.set_ylabel(f'ABR ({MU}V)')
     ax.set_xlabel('time (ms)')
     
     # Save figure
@@ -429,16 +680,116 @@ if GRAND_AVG_IPSI_VS_CONTRA:
     f.savefig(savename + '.svg')
     f.savefig(savename + '.png', dpi=300)
 
+
+    ## Stats
+    n_mice = len(this_averaged_abrs.index.get_level_values('mouse').unique())
+    
+    stats_filename = f'figures/STATS__GRAND_AVG_IPSI_VS_CONTRA'
+    with open(stats_filename, 'w') as fi:
+        fi.write(f'n = {n_mice} mice\n')
+    
+    # Echo
+    print(stats_filename)
+    with open(stats_filename) as fi:
+        print(''.join(fi.readlines()))
+
+
+## Graveyard code for estimating delay between ipsi and contra
+if False:
+    ## Resample
+    # This will ring for about 20 samples near the window edges, but that
+    # is far from the time that we care about
+    resample_factor = 10
+    new_len = this_averaged_abrs.shape[1] * resample_factor
+    resampled, new_t = scipy.signal.resample(
+        this_averaged_abrs, new_len, t=loudest.columns, axis=1)
+    
+    # The columns are weirdly a float into the original sample count
+    resampled_df = pandas.DataFrame(
+        resampled,
+        index=this_averaged_abrs.index,
+        columns=pandas.Index(new_t, name=this_averaged_abrs.columns.name),
+        )
+
+
+    ## Plot the delay between ipsi and contra
+    winsize_ms = 1
+    halfwinsize_samples = int(np.rint(winsize_ms * sampling_rate / 1000 * resample_factor / 2))
+
+    # Iterate
+    peak_res_l = []
+    for mouse in this_averaged_abrs.index.get_level_values('mouse').unique():
+        for channel in ['LV', 'RV']:
+            # Determine which is which
+            if channel == 'LV':
+                ipsi_speaker = 'L'
+                contra_speaker = 'R'
+            else:
+                ipsi_speaker = 'R'
+                contra_speaker = 'L'
+            
+            # Slice
+            ipsi_resp = resampled_df.loc[mouse].loc[channel].loc[ipsi_speaker]
+            contra_resp = resampled_df.loc[mouse].loc[channel].loc[contra_speaker]
+    
+            # Moving xcorr
+            for n_center_col in range(len(resampled_df.columns)):
+                # Get start and stop indices
+                start = n_center_col - halfwinsize_samples
+                stop = n_center_col + halfwinsize_samples
+                if start < 0 or stop >= len(resampled_df.columns):
+                    continue
+                
+                # Convert n_center_col to actual time
+                center_t = resampled_df.columns[n_center_col] / sampling_rate
+                
+                # Correlate ipsi vs contra
+                # This will be biased toward zero-lag because of the zero-padding
+                counts, corrn = my.misc.correlate(
+                    ipsi_resp.iloc[:, start:stop].T, #loc[63],
+                    contra_resp.iloc[:, start:stop].T, #.loc[63],
+                    mode='same')   
+    
+                # Mean over sound levels
+                counts = counts.mean(axis=1)
+    
+                # Find peak
+                # Positive peak_idx means that the second signal leads the first one
+                peak_idx = corrn[counts.argmax()]
+                peak_val = counts.max()
+                
+                # Store
+                peak_res_l.append({
+                    'mouse': mouse,
+                    'channel': channel,
+                    'center_t': center_t,
+                    'peak_idx': peak_idx,
+                    })
+
+    # DataFrame
+    peak_df = pandas.DataFrame.from_records(peak_res_l)
+    
+    # Aggregate over channel
+    peak_df2 = peak_df.groupby(['mouse', 'center_t'])['peak_idx'].mean().unstack('mouse')
+    
+    # Plot
+    f, ax = plt.subplots()
+    ax.plot(
+        peak_df2.index * 1000,
+        (peak_df2.values / resample_factor / sampling_rate * 1000),
+        )
+
+
 if GRAND_AVG_LR_LEFT_VS_RIGHT:
 
     ## Slice data
     # For this analysis, use only after_HL == False
-    this_averaged_abrs = averaged_abrs.xs(
+    this_averaged_abrs = averaged_abrs_by_mouse.xs(
         False, level='after_HL').droplevel('HL_type')    
     
-    # Calculate the grand average (averaging out date and mouse)
+    # Calculate the grand average (averaging out mouse)
     this_grand_average = this_averaged_abrs.groupby(
-        [lev for lev in this_averaged_abrs.index.names if lev not in ['date', 'mouse']]
+        [lev for lev in this_averaged_abrs.index.names if lev != 'mouse']
         ).mean()
     
     # Slice loudest sound
@@ -452,10 +803,11 @@ if GRAND_AVG_LR_LEFT_VS_RIGHT:
     
     # Plot each
     # solid=left speaker, dashed=right speaker
+    this_t = loudest.columns / sampling_rate * 1000
     ax.plot(
-        t, loudest.loc['LR'].loc['L'], color='k', ls='-', lw=1, label='left')
+        this_t, loudest.loc['LR'].loc['L'], color='k', ls='-', lw=1, label='left')
     ax.plot(
-        t, loudest.loc['LR'].loc['R'], color='k', ls='--', lw=1, label='right')
+        this_t, loudest.loc['LR'].loc['R'], color='k', ls='--', lw=1, label='right')
     ax.set_title('LR')
     
     # Legend
@@ -464,10 +816,10 @@ if GRAND_AVG_LR_LEFT_VS_RIGHT:
     # Pretty
     my.plot.despine(ax)
     ax.set_xlim(-1, 7)
-    ax.set_xticks((0, 3, 6))
+    ax.set_xticks((0, 2, 4, 6))
     ax.set_ylim(-3, 3)
     ax.set_yticks((-3, 0, 3))
-    ax.set_ylabel('ABR (uV)')
+    ax.set_ylabel(f'ABR ({MU}V)')
     ax.set_xlabel('time (ms)')
     
     # Save figure
@@ -475,15 +827,29 @@ if GRAND_AVG_LR_LEFT_VS_RIGHT:
     f.savefig(savename + '.svg')
     f.savefig(savename + '.png', dpi=300)
 
+
+    ## Stats
+    n_mice = len(this_averaged_abrs.index.get_level_values('mouse').unique())
+    
+    stats_filename = f'figures/STATS__GRAND_AVG_LR_LEFT_VS_RIGHT'
+    with open(stats_filename, 'w') as fi:
+        fi.write(f'n = {n_mice} mice\n')
+    
+    # Echo
+    print(stats_filename)
+    with open(stats_filename) as fi:
+        print(''.join(fi.readlines()))
+    
+    
 if GRAND_AVG_ONE_SIDE_ONLY:
     # Slice data
     # for this analysis, use after_HL == False
-    this_averaged_abrs = averaged_abrs.xs(
+    this_averaged_abrs = averaged_abrs_by_mouse.xs(
         False, level='after_HL').droplevel('HL_type')
     
     # Calculate the grand average (averaging out date and mouse)
     this_grand_average = this_averaged_abrs.groupby(
-        [lev for lev in this_averaged_abrs.index.names if lev not in ['date', 'mouse']]
+        [lev for lev in this_averaged_abrs.index.names if lev != 'mouse']
         ).mean()
     
     # Slice loudest sound
@@ -495,12 +861,13 @@ if GRAND_AVG_ONE_SIDE_ONLY:
     
     # Plot each
     # solid=left speaker, dashed=right speaker
+    this_t = loudest.columns / sampling_rate * 1000
     ax.plot(
-        t, loudest.loc['LV'].loc['R'], color='b', ls='-', lw=1, label='LV')
+        this_t, loudest.loc['LV'].loc['R'], color='b', ls='-', lw=1, label='LV')
     ax.plot(
-        t, loudest.loc['RV'].loc['R'], color='r', ls='-', lw=1, label='RV')
+        this_t, loudest.loc['RV'].loc['R'], color='r', ls='-', lw=1, label='RV')
     ax.plot(
-        t, loudest.loc['LR'].loc['R'], color='k', ls='-', lw=1, label='LR')
+        this_t, loudest.loc['LR'].loc['R'], color='k', ls='-', lw=1, label='LR')
     ax.set_title('sound from right')
     
     # Legend
@@ -509,16 +876,29 @@ if GRAND_AVG_ONE_SIDE_ONLY:
     # Pretty
     my.plot.despine(ax)
     ax.set_xlim(-1, 7)
-    ax.set_xticks((0, 3, 6))
-    ax.set_ylim(-4, 4)
-    ax.set_yticks((-4, 0, 4))
-    ax.set_ylabel('ABR (uV)')
+    ax.set_xticks((0, 2, 4, 6))
+    ax.set_ylim(-3, 3)
+    ax.set_yticks((-3, 0, 3))
+    ax.set_ylabel(f'ABR ({MU}V)')
     ax.set_xlabel('time (ms)')
     
     # Save figure
     savename = 'figures/GRAND_AVG_ONE_SIDE_ONLY'
     f.savefig(savename + '.svg')
     f.savefig(savename + '.png', dpi=300)
+
+    
+    ## Stats
+    n_mice = len(this_averaged_abrs.index.get_level_values('mouse').unique())
+    
+    stats_filename = f'figures/STATS__GRAND_AVG_ONE_SIDE_ONLY'
+    with open(stats_filename, 'w') as fi:
+        fi.write(f'n = {n_mice} mice\n')
+    
+    # Echo
+    print(stats_filename)
+    with open(stats_filename) as fi:
+        print(''.join(fi.readlines()))
 
 if PLOT_DELAY_VS_LEVEL:
     ## Plot the delay versus sound level
