@@ -8,6 +8,18 @@
 #   PLOT_TRIAL_AVERAGED_ABR
 #   PLOT_POSITIVE_AND_NEGATIVE_CLICKS
 
+
+"""
+# TODO: do this upstream
+averaged_abrs_by_date = big_abrs.groupby(
+    [lev for lev in big_abrs.index.names if lev != 'recording']
+    ).mean()
+
+averaged_abrs_by_mouse = averaged_abrs_by_date.groupby(
+    [lev for lev in averaged_abrs_by_date.index.names if lev != 'date']
+    ).mean()
+"""
+
 import os
 import datetime
 import glob
