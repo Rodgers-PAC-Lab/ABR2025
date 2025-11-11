@@ -149,7 +149,7 @@ corr_df['norm'] = corr_df['val'] / corr_df['max'] ** 2
 # The delays become highly variable (random) for the lower levels
 # Dropping delays with low 'norm' introduces strange selection effects
 # Better to just give up on lowest levels
-corr_df = corr_df[corr_df.index.get_level_values('label') >= 52]
+corr_df = corr_df[corr_df.index.get_level_values('label') >= 24]
 
 
 ## Plots
@@ -913,11 +913,11 @@ if PLOT_DELAY_VS_LEVEL:
     # TODO: do this in one shot, by finding a single slope that explains all levels
     rec_l = []
     rec_keys_l = []
-    for (date, mouse, speaker_side, channel), subdf in this_corr_df.groupby(
-            ['date', 'mouse', 'speaker_side', 'channel']):
+    for (mouse, speaker_side, channel), subdf in this_corr_df.groupby(
+            ['mouse', 'speaker_side', 'channel']):
         
         # droplevel
-        subdf = subdf.droplevel(['date', 'mouse', 'speaker_side', 'channel'])
+        subdf = subdf.droplevel(['mouse', 'speaker_side', 'channel'])
         
         # fit
         # slope units are delay in samples per dB
@@ -929,12 +929,12 @@ if PLOT_DELAY_VS_LEVEL:
         # rval should generally be between -1 and -0.85
         # slope should be mean -0.11, std 0.02
         rec_l.append((fit.slope, fit.rvalue))
-        rec_keys_l.append((date, mouse, speaker_side, channel))
+        rec_keys_l.append((mouse, speaker_side, channel))
 
     # Concat
     # The fits are worse for speaker_side R
     midx = pandas.MultiIndex.from_tuples(
-        rec_keys_l, names=['date', 'mouse', 'speaker_side', 'channel'])
+        rec_keys_l, names=['mouse', 'speaker_side', 'channel'])
     slope_df = pandas.DataFrame(
         rec_l, columns=['slope', 'rval'], index=midx)
 
@@ -959,22 +959,26 @@ if PLOT_DELAY_VS_LEVEL:
     to_agg = this_corr_df['idx'].groupby(
         ['mouse', 'label']).mean().unstack('mouse') / 16e3 * 1e3
     
+    # Plot each mouse
+    # TODO: some of these lines are overlapping?
+    ax.plot(to_agg, lw=.75, alpha=.5, color='k')
+
     # Now aggregate with mouse as N
     n_mice = to_agg.shape[1]
     topl_mu = to_agg.mean(axis=1)
     topl_err = to_agg.sem(axis=1)
-    ax.plot(topl_mu, color='k')
-    ax.fill_between(
-        x=topl_mu.index,
-        y1=topl_mu - topl_err,
-        y2=topl_mu + topl_err,
-        alpha=.5, lw=0, color='k',
-        )
-
+    #~ ax.plot(topl_mu, lw=1.5, color='r')
+    #~ ax.fill_between(
+        #~ x=topl_mu.index,
+        #~ y1=topl_mu - topl_err,
+        #~ y2=topl_mu + topl_err,
+        #~ alpha=.5, lw=0, color='k',
+        #~ )
+    
     # Pretty
     my.plot.despine(ax)
-    ax.set_xlim((45, 95))
-    ax.set_xticks((50, 70, 90))
+    ax.set_xlim((20, 65))
+    ax.set_xticks((20, 40, 60))
     ax.set_ylim((0, 0.4))
     ax.set_yticks((0, 0.2, 0.4))
     
@@ -983,7 +987,7 @@ if PLOT_DELAY_VS_LEVEL:
     ax.set_ylabel('delay (ms)')
     
     # Legend
-    ax.text(80, 0.35, f'n = {n_mice} mice', ha='center', va='center')
+    ax.text(50, 0.35, f'n = {n_mice} mice', ha='center', va='center')
     
     
     ## Save figure
@@ -994,10 +998,16 @@ if PLOT_DELAY_VS_LEVEL:
     
     ## Stats
     with open('figures/STATS__PLOT_DELAY_VS_LEVEL', 'w') as fi:
-        fi.write('mean over xcorr peak for all channels, speaker sides, and recordings\n')
+        fi.write('take corr_df defined above, excluding after_HL ')
+        fi.write('(mouse * channel * speaker_side * label)\n')
+        fi.write('groupby mouse * label, meaning out channel * speaker_side\n')
+        fi.write('plot the above, with SEM over mice\n')
         fi.write(f'n = {n_mice} mice\n')
-        fi.write(f'mean slope in us/dB: {slope_by_mouse_mu}\n')
-        fi.write(f'SEM slope in us/dB: {slope_by_mouse_sem}\n')
+        fi.write('also fit a slope over level for each (mouse * channel * speaker_side)\n')
+        fi.write('then average those slopes within mouse over channel * speaker_side\n')
+        fi.write('then aggregate those slopes over mouse as below\n')
+        fi.write(f'mean slope in {MU}s/dB: {slope_by_mouse_mu}\n')
+        fi.write(f'SEM slope in {MU}s/dB: {slope_by_mouse_sem}\n')
     
     # Echo
     with open('figures/STATS__PLOT_DELAY_VS_LEVEL') as fi:
