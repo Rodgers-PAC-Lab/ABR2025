@@ -946,6 +946,7 @@ if PLOT_DELAY_VS_LEVEL:
     
     # Agg
     slope_by_mouse_mu = slope_by_mouse.mean()
+    slope_by_mouse_std = slope_by_mouse.std()
     slope_by_mouse_sem = slope_by_mouse.sem()
     
     
@@ -960,8 +961,7 @@ if PLOT_DELAY_VS_LEVEL:
         ['mouse', 'label']).mean().unstack('mouse') / 16e3 * 1e3
     
     # Plot each mouse
-    # TODO: some of these lines are overlapping?
-    ax.plot(to_agg, lw=.75, alpha=.5, color='k')
+    ax.plot(to_agg, lw=1, alpha=.5, color='k')
 
     # Now aggregate with mouse as N
     n_mice = to_agg.shape[1]
@@ -1008,6 +1008,7 @@ if PLOT_DELAY_VS_LEVEL:
         fi.write('then aggregate those slopes over mouse as below\n')
         fi.write(f'mean slope in {MU}s/dB: {slope_by_mouse_mu}\n')
         fi.write(f'SEM slope in {MU}s/dB: {slope_by_mouse_sem}\n')
+        fi.write(f'STD slope in {MU}s/dB: {slope_by_mouse_std}\n')
     
     # Echo
     with open('figures/STATS__PLOT_DELAY_VS_LEVEL') as fi:
