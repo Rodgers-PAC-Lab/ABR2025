@@ -23,9 +23,10 @@ import matplotlib.pyplot as plt
 import seaborn
 
 
-## Plots
+## Plotting defaults
 my.plot.manuscript_defaults()
 my.plot.font_embed()
+MU = chr(956)
 
 
 ## Paths
@@ -38,6 +39,10 @@ raw_data_directory = paths['raw_data_directory']
 output_directory = paths['output_directory']
 
 
+## Params
+sampling_rate = 16000
+
+
 ## Load previous results
 # Load results of Step1
 mouse_metadata = pandas.read_pickle(
@@ -47,44 +52,75 @@ experiment_metadata = pandas.read_pickle(
 recording_metadata = pandas.read_pickle(
     os.path.join(output_directory, 'recording_metadata'))
 
+# Replace np.nan with 'none' in HL_type
+# Otherwise it gets dropped by groupby
+# TODO: do this upstream
+mouse_metadata['HL_type'] = mouse_metadata['HL_type'].fillna('none')
+
 # Load results of Step2
 big_abrs = pandas.read_pickle(
     os.path.join(output_directory, 'big_abrs'))
+
+# Loudest dB
+loudest_db = big_abrs.index.get_level_values('label').max()
     
 
-## Params
-sampling_rate = 16000  # TODO: store in recording_metadata
-loudest_dB = 93
+## Drop some bad recordings
+# TODO: do this upstream
+
+# Drop the positive mice
+big_abrs = big_abrs.drop(
+    ['PizzaSlice2', 'PizzaSlice7', 'OrangeHeart1'], level='mouse')
+
+# Drop the bad session from Ketchup_209
+big_abrs = big_abrs.drop(datetime.date(2025, 3, 20), level='date')
+
+
+## Join HL metadata on big_abrs
+# Join after_HL onto big_abrs
+big_abrs = my.misc.join_level_onto_index(
+    big_abrs, 
+    experiment_metadata.set_index(['mouse', 'date'])[['after_HL', 'n_experiment']], 
+    join_on=['mouse', 'date']
+    )
+
+# Join HL_type onto big_abrs
+big_abrs = my.misc.join_level_onto_index(
+    big_abrs, 
+    mouse_metadata.set_index('mouse')['HL_type'], 
+    join_on='mouse',
+    )
+
+
+## Keep only after_HL == False
+big_abrs = big_abrs.xs(False, level='after_HL').droplevel('HL_type')
+
+
+## Drop the now unnecessary level 'date' (replaced with n_experiment)
+big_abrs = big_abrs.droplevel('date')
+
+
+## Keep only the first experiment from each mouse, so that N = mice
+# Better to keep the first than to average, because the two experiments
+# may be different-looking or out of phase
+big_abrs = big_abrs.xs(0, level='n_experiment')
 
 
 ## Aggregate over recordings for each ABR
 # TODO: do this upstream
-averaged_abrs = big_abrs.groupby(
-    [lev for lev in big_abrs.index.names if lev != 'recording']).mean()
+averaged_abrs_by_date = big_abrs.groupby(
+    [lev for lev in big_abrs.index.names if lev != 'recording']
+    ).mean()
 
-# Join after_HL on avged_abrs
-averaged_abrs = my.misc.join_level_onto_index(
-    averaged_abrs, 
-    experiment_metadata.set_index(['mouse', 'date'])['after_HL'], 
-    join_on=['mouse', 'date']
-    )
 
-# Keep only after_HL == False
-averaged_abrs = averaged_abrs.loc[False]
-
-# Keep only the first experiment from each mouse, so that N = mice
-# Better to keep the first than to average, because the two experiments
-# may be different-looking or out of phase
-averaged_abrs = averaged_abrs.sort_index().groupby(
-    [lev for lev in averaged_abrs.index.names if lev != 'date']).first()
+## Use only the loudest sound
+# Pick peaks for loudest sound only
+loudest = averaged_abrs_by_date.xs(loudest_db, level='label')
 
 
 ## Pick peaks
 # Consistent t, used throughout
 t = big_abrs.columns / sampling_rate * 1000
-
-# Pick peaks for loudest sound only
-loudest = averaged_abrs.xs(loudest_dB, level='label')
 
 # Find peaks for each
 peak_params_l = []
@@ -239,8 +275,8 @@ assert len(primary_peak) == len(new_index) * 6
 
 
 ## Plots
-STRIP_PLOT_PEAK_HEIGHT = False
-STRIP_PLOT_PEAK_LATENCY = False
+STRIP_PLOT_PEAK_HEIGHT = True
+STRIP_PLOT_PEAK_LATENCY = True
 OVERPLOT_LOUDEST_WITH_PEAKS = True
 
 
@@ -287,7 +323,7 @@ if STRIP_PLOT_PEAK_HEIGHT:
     # Pretty
     ax.set_ylim((0, -8))
     ax.set_yticks((0, -4, -8))
-    ax.set_ylabel(f'{metric} of primary peak (uV)')
+    ax.set_ylabel(f'{metric} of\nprimary peak ({MU}V)')
     ax.set_xlabel('channel')
     my.plot.despine(ax)
 
@@ -349,6 +385,7 @@ if STRIP_PLOT_PEAK_HEIGHT:
     ## Write out stats
     stats_filename = 'figures/STATS__STRIP_PLOT_PEAK_HEIGHT'
     with open(stats_filename, 'w') as fi:
+        fi.write(stats_filename + '\n')
         fi.write(f'n = {n_mice} mice\n')
         fi.write('using only the first experiment from each mouse\n')
         fi.write(f'paired t-test p-value on L vs R for {metric}:\n')
@@ -406,7 +443,7 @@ if STRIP_PLOT_PEAK_LATENCY:
     # Pretty
     ax.set_ylim((0, 3))
     ax.set_yticks((0, 1, 2, 3))
-    ax.set_ylabel('latency to primary peak (ms)')
+    ax.set_ylabel('latency to\nprimary peak (ms)')
     ax.set_xlabel('channel')
     my.plot.despine(ax)
 
@@ -440,38 +477,54 @@ if STRIP_PLOT_PEAK_LATENCY:
     
     
     ## Plot stats
-    #~ for n_channel, channel in enumerate(['LV', 'RV', 'LR']):
-        #~ # Plot a line
-        #~ xval = [
-            #~ n_channel - .2,
-            #~ n_channel + .2,
-            #~ ]
-        #~ ax.plot(xval, [-7, -7], '-', color='k', lw=.75)    
+    for n_channel, channel in enumerate(['LV', 'RV', 'LR']):
+        # Plot a line
+        xval = [
+            n_channel - .2,
+            n_channel + .2,
+            ]
+        ax.plot(xval, [2.5, 2.5], '-', color='k', lw=.75)    
         
-        #~ # Add asterisks
-        #~ sigstr = my.stats.pvalue_to_significance_string(pvalue_ser.loc[channel])
-        #~ yval = -7.25 if sigstr == 'n.s.' else -7
-        #~ ax.text(n_channel, yval, sigstr, ha='center', va='bottom')
-        
+        # Add asterisks
+        sigstr = my.stats.pvalue_to_significance_string(pvalue_ser.loc[channel])
+        yval = 2.6 if sigstr == 'n.s.' else 2.5
+        ax.text(n_channel, yval, sigstr, ha='center', va='bottom')
+
     
     ## Write out stats
-    # Aggregate
+    # Aggregate by channel * speaker_side over mouse
     mu = primary_peak[metric].groupby(['channel', 'speaker_side']).mean().unstack()
     err = primary_peak[metric].groupby(['channel', 'speaker_side']).sem().unstack()
     
+    # Simple mean by ipsi and contra
+    mu_ipsi = (mu.loc[('LV', 'L')] + mu.loc[('RV', 'R')]) / 2
+    mu_contra = (mu.loc[('LV', 'R')] + mu.loc[('RV', 'L')]) / 2
+    
+    # Aggregate vertex-ear by mouse over channel * speaker_side
+    by_mouse = primary_peak[metric].drop(
+        'LR', level='channel').groupby('mouse').mean()
+    mu2 = by_mouse.mean()
+    err2 = by_mouse.sem()
+    
+    
+
     # Write out stats
     stats_filename = 'figures/STATS__STRIP_PLOT_PEAK_LATENCY'
     with open(stats_filename, 'w') as fi:
+        fi.write(stats_filename + '\n')
         fi.write(f'n = {n_mice} mice\n')
         fi.write('using only the first experiment from each mouse\n')
         fi.write(f'paired t-test p-value on L vs R for {metric}:\n')
         fi.write(str(pvalue_ser) + '\n')
         fi.write(f'mean:\n{mu}\n')
         fi.write(f'SEM:\n{err}\n')
+        fi.write(f'ipsi: {mu_ipsi:.4f}; contra: {mu_contra:.4f}\n')
+        fi.write(f'vertex-ear latency across '
+            f'{len(by_mouse)} mice: {mu2:.4f} +/- {err2:.5f} (SEM)')
     
     # Echo
     with open(stats_filename) as fi:
-        print(''.join(fi.readlines()))    
+        print('\n' + ''.join(fi.readlines()))    
 
 
     ## Savefig
@@ -488,9 +541,9 @@ if OVERPLOT_LOUDEST_WITH_PEAKS:
     f, axa = plt.subplots(
         len(channel_l), 
         len(speaker_side_l),
-        sharex=True, sharey=True, figsize=(11, 4))
+        sharex=True, sharey=True, figsize=(8, 3))
     f.subplots_adjust(
-        left=.05, right=.99, top=.92, bottom=.15, hspace=0, wspace=0.2)
+        left=.07, right=.99, top=.92, bottom=.15, hspace=0, wspace=0.2)
 
     # Plot each channel * speaker_side
     gobj = loudest.groupby(['channel', 'speaker_side'])
@@ -561,15 +614,19 @@ if OVERPLOT_LOUDEST_WITH_PEAKS:
         # Label the primary peak zone
         ax.fill_betweenx(y=(-6, 6), x1=1.1, x2=1.7, color='gray', alpha=.25, lw=0)
 
+    # Legend the primary peak pink point
+    axa[0, 0].plot([-2], [4], color='magenta', clip_on=False, **peak_kwargs)
+    axa[0, 0].text(-1.75, 4, 'primary peak', ha='left', va='center', size=12)
+
     # Pretty
     ax.set_xlim((-1, 7))
     ax.set_ylim((-6, 6))
-    ax.set_xticks([-1, 0, 1, 2, 3, 4, 5, 6, 7])
+    ax.set_xticks([0, 3, 6])
     ax.set_yticks([])
     f.text(.51, .01, 'time from sound onset (ms)', ha='center', va='bottom')
     
     # Scale bar
-    axa[0, -1].plot([6, 6], [3, 5], 'k-', lw=.75)
+    axa[0, -1].plot([6, 6], [3, 5], 'k-', lw=.75, clip_on=False)
     axa[0, -1].text(6.2, 4, '2 uV', ha='left', va='center', size=12)
     
     # Label the channel
@@ -591,8 +648,9 @@ if OVERPLOT_LOUDEST_WITH_PEAKS:
     n_mice = len(loudest.index.get_level_values('mouse').unique())
     
     # Write out stats
-    stats_filename = 'figures/STATS__OVERPLOT_LOUDEST_WITH_PEAKS'
+    stats_filename = 'figures/STATS__OVERPLOT_LOUDEST_WITH_PEAKS\n'
     with open(stats_filename, 'w') as fi:
+        fi.write(stats_filename + '\n')
         fi.write(f'n = {n_mice} mice\n')
         fi.write('using only the first experiment from each mouse\n')
     
