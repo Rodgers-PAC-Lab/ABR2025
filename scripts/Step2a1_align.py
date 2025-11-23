@@ -3,8 +3,6 @@
 # Everything that involves loading the raw data for all sesssions should be
 # done in this script, to avoid having to load multiple times.
 #
-# TODO: pull out longer times to see what happens in a bigger window
-#
 # Workflow:
 # * Loads data and checks for glitches
 # * Calculates PSD
@@ -23,18 +21,13 @@
 #   big_heartbeat_info - time of each beat
 #   big_heartbeat_waveform - mean EKG waveform of each recording
 
-
 import os
-import datetime
-import glob
 import json
 import scipy.signal
 import numpy as np
 import pandas
-from paclab import abr
+import ABR2025
 import paclab
-import my.plot
-import matplotlib.pyplot as plt
 import tqdm
 
 
@@ -54,8 +47,8 @@ recording_metadata = pandas.read_pickle(
 
 
 ## Params
-abr_start_sample = -40
-abr_stop_sample = 120
+abr_start_sample = -80
+abr_stop_sample = 240
 abr_highpass_freq = 300
 abr_lowpass_freq = 3000
 
@@ -64,7 +57,6 @@ heartbeat_highpass_freq = 20
 heartbeat_lowpass_freq = 500
 
 # Recording params
-# TODO: store in recording_metadata?
 sampling_rate = 16000 
 neural_channel_numbers = [0, 2, 4]
 audio_channel_number = 7
@@ -119,7 +111,7 @@ for date, mouse, recording in tqdm.tqdm(recording_metadata.index):
         os.path.join(raw_data_directory, this_recording['short_datafile']))
     
     # Load the data
-    data = abr.loading.load_recording(recording_folder)
+    data = ABR2025.loading.load_recording(recording_folder)
     data = data['data']
     
     # Parse into neural and speaker data
@@ -275,7 +267,7 @@ for date, mouse, recording in tqdm.tqdm(recording_metadata.index):
     threshold_V = 10 ** amplitude_cuts.min()
     
     # Identify clicks
-    identified_clicks = abr.signal_processing.identify_click_times(
+    identified_clicks = ABR2025.signal_processing.identify_click_times(
         speaker_signal_V, 
         threshold_V=threshold_V,
         sampling_rate=sampling_rate, 
@@ -287,7 +279,7 @@ for date, mouse, recording in tqdm.tqdm(recording_metadata.index):
     speaker_signal_hp = identified_clicks['highpassed']
 
     # Categorize them
-    click_params = abr.signal_processing.categorize_clicks(
+    click_params = ABR2025.signal_processing.categorize_clicks(
         identified_clicks['peak_time_samples'], 
         speaker_signal_hp, 
         amplitude_cuts, 
@@ -296,7 +288,7 @@ for date, mouse, recording in tqdm.tqdm(recording_metadata.index):
 
 
     ## Extract each trigger from the audio signal
-    triggered_ad = abr.signal_processing.slice_audio_on_clicks(
+    triggered_ad = ABR2025.signal_processing.slice_audio_on_clicks(
         speaker_signal_hp, click_params)
 
 
