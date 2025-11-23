@@ -7,16 +7,11 @@
 #   PLOT_EKG_STATS
 
 import os
-import datetime
-import glob
 import json
-import scipy.signal
 import numpy as np
 import pandas
-from paclab import abr
 import my.plot
 import matplotlib.pyplot as plt
-import tqdm
 
 
 ## Plotting defaults
@@ -35,32 +30,27 @@ raw_data_directory = paths['raw_data_directory']
 output_directory = paths['output_directory']
 
 
+## Params
+heartbeat_highpass_freq = 20
+heartbeat_lowpass_freq = 500
+
+# Recording params
+sampling_rate = 16000 
+neural_channel_numbers = [0, 2, 4]
+audio_channel_number = 7
+
+
 ## Load previous results
 # Load results of main1
 recording_metadata = pandas.read_pickle(
     os.path.join(output_directory, 'recording_metadata'))
 
 # Load results of Step2a1_align
+# PowerRainbow2 looks a bit blunted and slow, but not totally out of the realm
 big_heartbeat_info = pandas.read_pickle(
     os.path.join(output_directory, 'big_heartbeat_info'))
 big_heartbeat_waveform = pandas.read_pickle(
     os.path.join(output_directory, 'big_heartbeat_waveform'))
-
-# Drop ToyCar1
-# PowerRainbow2 looks a bit blunted and slow, but not totally out of the realm
-big_heartbeat_info = big_heartbeat_info.drop('ToyCar1', level='mouse')
-big_heartbeat_waveform = big_heartbeat_waveform.drop('ToyCar1', level='mouse')
-
-
-## Params
-heartbeat_highpass_freq = 20
-heartbeat_lowpass_freq = 500
-
-# Recording params
-# TODO: store in recording_metadata?
-sampling_rate = 16000 
-neural_channel_numbers = [0, 2, 4]
-audio_channel_number = 7
 
 
 ## Aggregate
@@ -212,7 +202,7 @@ if PLOT_EKG_BY_MOUSE:
     #~ ax.set_xlim((-15, 15))
     #~ ax.set_ylabel('EKG (uV)')
     #~ my.plot.despine(ax)    
-1/0
+
 if PLOT_EKG_STATS:
     # Histogram height, prominence, width, and IBI by session
     # Height: mode at 72, range 50-140, long tail to 210, min 50
