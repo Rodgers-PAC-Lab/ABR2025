@@ -156,49 +156,9 @@ big_peak_df_filtered = big_peak_df
 primary_peak = big_peak_df_filtered.sort_values('height').groupby(
     [lev for lev in big_peak_df.index.names if lev != 'n_pk']
     ).first()
-    
 
 ## Vertex-ear recordings
-
 print(primary_peak.drop('LR', level='channel').sort_values('t'))
-
-# I checked all these
-# These are almost all ones where there's (unusually) a later peak that is 
-# larger than the primary peak. That's okay, we'll just specify that we chose
-# the primary peak as the largest negative one in the window < 1.9 ms.
-# 
-# The exception is PizzaSlice2 on 02-28, which has a strangely tiny primary peak,
-# which is also bimodal for RV-R. That one looks messed up to me. The late
-# peak will be dropped here, leaving only the tiny primary peak (which ends up
-# being an outlier on the strip plot).
-# TODO: look into whether that whole experiment should be dropped
-
-2025-03-29 YellowStingray7 LV      L              72 -1.890973  neg -1.213548  2.0000
-                           RV      R              72 -1.314301  neg -1.242551  2.0000
-2025-04-30 Pearl_189       RV      R              74 -2.621651  neg -2.048181  2.1250
-2025-02-28 PizzaSlice7     RV      R              74 -3.003374  neg -2.010931  2.1250
-2025-05-02 Cacti_1         RV      R              75 -4.300674  neg -2.523503  2.1875
-2025-02-28 PizzaSlice2     LV      L              76 -1.186733  neg -0.981259  2.2500
-                           RV      R              76 -1.203288  neg -1.139183  2.2500
-2025-02-12 Pineapple_197   RV      L              82 -5.428365  neg -3.349833  2.6250
-2025-04-30 Pearl_189       LV      R              92 -2.444802  neg -1.490880  3.2500
-
-
-## LR recordings
-
-print(primary_peak.xs('LR', level='channel').sort_values('t'))
-
-# The Cacti_223 R recording on 6-6 looks a bit off: the peak is small and
-# followed too quickly by another peak. However, I think it is in the range
-# of normal variation. It was repeated 4 times. Dropping the late peak enables
-# us to pick up the correct peak.
-#
-# The PowerRainbow2 L recording on 2-19 has a bona fide delayed primary peak,
-# so it will not be dropped. It may be in range of normal variation. It ends
-# up as the LR-R outlier in the latency strip plot.
-
-2025-02-19 PowerRainbow2   L              77 -2.107131  neg -1.795992  2.3125
-2025-06-06 Cacti_223       R              81 -2.068464  pos -1.423620  2.5625
 """
 
 # Drop any peak in LR after 2.6 ms, or in the other channels after 1.9 ms
