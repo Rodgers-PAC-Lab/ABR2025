@@ -47,10 +47,6 @@ recording_metadata = pandas.read_pickle(
 # Load results of Step2b_avg
 big_abrs = pandas.read_pickle(
     os.path.join(output_directory, 'big_abrs'))
-big_abrs = pandas.read_pickle(
-    os.path.join(output_directory, 'averaged_abrs_by_mouse'))
-big_abrs = pandas.read_pickle(
-    os.path.join(output_directory, 'averaged_abrs_by_date'))
 trial_counts = pandas.read_pickle(
     os.path.join(output_directory, 'trial_counts'))
 
