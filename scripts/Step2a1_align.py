@@ -47,8 +47,8 @@ recording_metadata = pandas.read_pickle(
 
 
 ## Params
-abr_start_sample = -80
-abr_stop_sample = 240
+abr_start_sample = -40
+abr_stop_sample = 120
 abr_highpass_freq = 300
 abr_lowpass_freq = 3000
 
