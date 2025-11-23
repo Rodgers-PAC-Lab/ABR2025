@@ -8,16 +8,12 @@
 #   PLOT_DELAY_VS_LEVEL
 
 import os
-import datetime
-import glob
 import json
 import matplotlib
 import scipy.signal
 import numpy as np
 import matplotlib
 import pandas
-import paclab.abr
-from paclab.abr import abr_plotting, abr_analysis
 import my.plot
 import matplotlib.pyplot as plt
 
@@ -51,50 +47,19 @@ experiment_metadata = pandas.read_pickle(
 recording_metadata = pandas.read_pickle(
     os.path.join(output_directory, 'recording_metadata'))
 
-# Replace np.nan with 'none' in HL_type
-# Otherwise it gets dropped by groupby
-# TODO: do this upstream
-mouse_metadata['HL_type'] = mouse_metadata['HL_type'].fillna('none')
-
-# Load results of Step2
+# Load results of Step2b_avg
 big_abrs = pandas.read_pickle(
     os.path.join(output_directory, 'big_abrs'))
+averaged_abrs_by_mouse = pandas.read_pickle(
+    os.path.join(output_directory, 'averaged_abrs_by_mouse'))
+averaged_abrs_by_date = pandas.read_pickle(
+    os.path.join(output_directory, 'averaged_abrs_by_date'))
+trial_counts = pandas.read_pickle(
+    os.path.join(output_directory, 'trial_counts'))
 
 # Loudest dB
 loudest_db = big_abrs.index.get_level_values('label').max()
   
-
-## Join HL metadata on big_abrs
-# Join after_HL onto big_abrs
-big_abrs = my.misc.join_level_onto_index(
-    big_abrs, 
-    experiment_metadata.set_index(['mouse', 'date'])['after_HL'], 
-    join_on=['mouse', 'date']
-    )
-
-# Join HL_type onto big_abrs
-big_abrs = my.misc.join_level_onto_index(
-    big_abrs, 
-    mouse_metadata.set_index('mouse')['HL_type'], 
-    join_on='mouse',
-    )
-
-
-## Drop the positive mice
-big_abrs = big_abrs.drop(
-    ['PizzaSlice2', 'PizzaSlice7', 'OrangeHeart1'], level='mouse')
-    
-
-## Aggregate over recordings for each ABR
-# TODO: do this upstream
-averaged_abrs_by_date = big_abrs.groupby(
-    [lev for lev in big_abrs.index.names if lev != 'recording']
-    ).mean()
-
-averaged_abrs_by_mouse = averaged_abrs_by_date.groupby(
-    [lev for lev in averaged_abrs_by_date.index.names if lev != 'date']
-    ).mean()
-
 
 ## Cross-correlate over level to measure delay
 rec_l = []
@@ -153,13 +118,13 @@ corr_df = corr_df[corr_df.index.get_level_values('label') >= 24]
 
 
 ## Plots
-GRAND_AVG_ABR_PLOT = False
-GRAND_AVG_ABR_PLOT_PERI_HL = False
-GRAND_AVG_IMSHOW = False
-GRAND_AVG_IMSHOW_PERI_HL = False
-GRAND_AVG_IPSI_VS_CONTRA = False
-GRAND_AVG_LR_LEFT_VS_RIGHT = False
-GRAND_AVG_ONE_SIDE_ONLY = False
+GRAND_AVG_ABR_PLOT = True
+GRAND_AVG_ABR_PLOT_PERI_HL = True
+GRAND_AVG_IMSHOW = True
+GRAND_AVG_IMSHOW_PERI_HL = True
+GRAND_AVG_IPSI_VS_CONTRA = True
+GRAND_AVG_LR_LEFT_VS_RIGHT = True
+GRAND_AVG_ONE_SIDE_ONLY = True
 PLOT_DELAY_VS_LEVEL = True
 
 if GRAND_AVG_ABR_PLOT:
@@ -207,7 +172,7 @@ if GRAND_AVG_ABR_PLOT:
         label_l = sorted(
             this_grand_average.index.get_level_values('label').unique(), 
             reverse=True)
-        aut_colorbar = paclab.abr.abr_plotting.generate_colorbar(
+        aut_colorbar = my.plot.generate_colorbar(
             len(label_l), mapname='inferno_r', start=0.15, stop=1)[::-1]
         
         # Make handles
@@ -330,7 +295,7 @@ if GRAND_AVG_ABR_PLOT_PERI_HL:
         label_l = sorted(
             this_grand_average.index.get_level_values('label').unique(), 
             reverse=True)
-        aut_colorbar = paclab.abr.abr_plotting.generate_colorbar(
+        aut_colorbar = my.plot.generate_colorbar(
             len(label_l), mapname='inferno_r', start=0.15, stop=1)[::-1]
         
         # Make handles
