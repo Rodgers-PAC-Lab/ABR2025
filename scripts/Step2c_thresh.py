@@ -7,17 +7,11 @@
 #   HISTOGRAM_EVOKED_RMS_BY_LEVEL
 
 import os
-import datetime
-import glob
 import json
-import scipy.signal
 import numpy as np
 import pandas
-import paclab.abr
-import paclab.abr.abr_plotting
 import my.plot
 import matplotlib.pyplot as plt
-import tqdm
 import matplotlib
 
 
@@ -37,6 +31,10 @@ raw_data_directory = paths['raw_data_directory']
 output_directory = paths['output_directory']
 
 
+## Params
+sampling_rate = 16000
+
+
 ## Load previous results
 # Load results of Step1
 mouse_metadata = pandas.read_pickle(
@@ -46,38 +44,15 @@ experiment_metadata = pandas.read_pickle(
 recording_metadata = pandas.read_pickle(
     os.path.join(output_directory, 'recording_metadata'))
 
-# Load results of Step2
+# Load results of Step2b_avg
 big_abrs = pandas.read_pickle(
     os.path.join(output_directory, 'big_abrs'))
+big_abrs = pandas.read_pickle(
+    os.path.join(output_directory, 'averaged_abrs_by_mouse'))
+big_abrs = pandas.read_pickle(
+    os.path.join(output_directory, 'averaged_abrs_by_date'))
 trial_counts = pandas.read_pickle(
     os.path.join(output_directory, 'trial_counts'))
-
-
-## Drop the positive mice
-big_abrs = big_abrs.drop(
-    ['PizzaSlice2', 'PizzaSlice7', 'OrangeHeart1'], level='mouse')
-trial_counts = trial_counts.drop(
-    ['PizzaSlice2', 'PizzaSlice7', 'OrangeHeart1'], level='mouse')
-
-
-## Join after_bilateral_HL on big_abrs
-# Join after_HL onto big_abrs
-big_abrs = my.misc.join_level_onto_index(
-    big_abrs, 
-    experiment_metadata.set_index(['mouse', 'date'])['after_HL'], 
-    join_on=['mouse', 'date']
-    )
-
-# Join HL_type onto big_abrs
-big_abrs = my.misc.join_level_onto_index(
-    big_abrs, 
-    mouse_metadata.set_index('mouse')['HL_type'], 
-    join_on='mouse',
-    )
-
-
-## Params
-sampling_rate = 16000
 
 
 ## Calculate the stdev(ABR) as a function of level
@@ -112,14 +87,12 @@ big_abr_evoked_rms = big_abr_stds.loc[:, 32].unstack('label')
 # Aggregate over recordings within a date
 big_abr_evoked_rms = big_abr_evoked_rms.groupby(
     [lev for lev in big_abr_evoked_rms.index.names if lev != 'recording'],
-    dropna=False,
     ).mean()
 
 # Aggregate over dates within a mouse * after_HL
 # TODO: consider just taking the first date instead
 big_abr_evoked_rms = big_abr_evoked_rms.groupby(
     [lev for lev in big_abr_evoked_rms.index.names if lev != 'date'],
-    dropna=False,
     ).mean()
 
 
@@ -148,7 +121,6 @@ over_thresh = over_thresh.T.stack()
 # typically a bit better on LR even though LR has slightly higher baseline
 threshold_db = over_thresh.loc[over_thresh.values].groupby(
     [lev for lev in over_thresh.index.names if lev != 'label'],
-    dropna=False,
     ).apply(
     lambda df: df.index[0][-1])
 
@@ -203,7 +175,7 @@ if PLOT_ABR_RMS_OVER_TIME:
     label_l = sorted(
         agg_mean.index.get_level_values('label').unique(), 
         reverse=True)
-    aut_colorbar = paclab.abr.abr_plotting.generate_colorbar(
+    aut_colorbar = my.plot.generate_colorbar(
         len(label_l), mapname='inferno_r', start=0.15, stop=1)[::-1]  
 
     # Set up ax_rows and ax_cols
@@ -418,8 +390,8 @@ if PLOT_ABR_POWER_VS_LEVEL_AFTER_HL:
     ## Plot sham and bilateral pre- and post-HL
     
     # Include only HL mice
-    this_threshold_db = threshold_db.drop(np.nan, level='HL_type')
-    this_big_abr_evoked_rms = big_abr_evoked_rms.drop(np.nan, level='HL_type')
+    this_threshold_db = threshold_db.drop('none', level='HL_type')
+    this_big_abr_evoked_rms = big_abr_evoked_rms.drop('none', level='HL_type')
 
     # Aggregate threshold over date and recording, maintaining after_HL
     threshold_db_agg = this_threshold_db.groupby(
