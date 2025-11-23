@@ -5,15 +5,9 @@
 
 import os
 import datetime
-import glob
 import json
-import matplotlib
-import scipy.signal
 import numpy as np
-import matplotlib
 import pandas
-import paclab.abr
-from paclab.abr import abr_plotting, abr_analysis
 import my.plot
 import matplotlib.pyplot as plt
 
@@ -46,56 +40,21 @@ experiment_metadata = pandas.read_pickle(
 recording_metadata = pandas.read_pickle(
     os.path.join(output_directory, 'recording_metadata'))
 
-# Replace np.nan with 'none' in HL_type
-# Otherwise it gets dropped by groupby
-# TODO: do this upstream
-mouse_metadata['HL_type'] = mouse_metadata['HL_type'].fillna('none')
-
-# Load results of Step2
+# Load results of Step2b_avg
 big_abrs = pandas.read_pickle(
     os.path.join(output_directory, 'big_abrs'))
-
-
-## Drop some bad recordings
-# TODO: do this upstream
-
-# Drop the positive mice
-big_abrs = big_abrs.drop(
-    ['PizzaSlice2', 'PizzaSlice7', 'OrangeHeart1'], level='mouse')
-
-# Drop the bad session from Ketchup_209
-big_abrs = big_abrs.drop(datetime.date(2025, 3, 20), level='date')
-
-
-## Join HL metadata on big_abrs
-# Join after_HL onto big_abrs
-big_abrs = my.misc.join_level_onto_index(
-    big_abrs, 
-    experiment_metadata.set_index(['mouse', 'date'])[['after_HL', 'n_experiment']], 
-    join_on=['mouse', 'date']
-    )
-
-# Join HL_type onto big_abrs
-big_abrs = my.misc.join_level_onto_index(
-    big_abrs, 
-    mouse_metadata.set_index('mouse')['HL_type'], 
-    join_on='mouse',
-    )
+averaged_abrs_by_mouse = pandas.read_pickle(
+    os.path.join(output_directory, 'averaged_abrs_by_mouse'))
+averaged_abrs_by_date = pandas.read_pickle(
+    os.path.join(output_directory, 'averaged_abrs_by_date'))
+trial_counts = pandas.read_pickle(
+    os.path.join(output_directory, 'trial_counts'))
 
 
 ## Keep only after_HL == False
 big_abrs = big_abrs.xs(False, level='after_HL').droplevel('HL_type')
-
-
-## Drop the now unnecessary level 'date' (replaced with n_experiment)
-big_abrs = big_abrs.droplevel('date')
-
-
-## Aggregate over recordings for each ABR
-# TODO: do this upstream
-averaged_abrs_by_date = big_abrs.groupby(
-    [lev for lev in big_abrs.index.names if lev != 'recording']
-    ).mean()
+averaged_abrs_by_mouse = averaged_abrs_by_mouse.xs(False, level='after_HL').droplevel('HL_type')
+averaged_abrs_by_date = averaged_abrs_by_date.xs(False, level='after_HL').droplevel('HL_type')
 
 
 ## Cross-correlate within and between mice to measure consistency

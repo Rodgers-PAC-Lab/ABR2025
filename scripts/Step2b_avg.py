@@ -125,12 +125,15 @@ big_arts = 0.5 * (
 
 
 ## Join metadata on big_abrs
-# Join after_HL onto big_abrs
+# Join after_HL and n_experiment onto big_abrs
 big_abrs = my.misc.join_level_onto_index(
     big_abrs, 
-    experiment_metadata.set_index(['mouse', 'date'])['after_HL'], 
+    experiment_metadata.set_index(['mouse', 'date'])[['after_HL', 'n_experiment']], 
     join_on=['mouse', 'date']
     )
+
+# Drop the now unnecessary level 'date' (replaced with n_experiment)
+big_abrs = big_abrs.droplevel('date')
 
 # Join HL_type onto big_abrs
 big_abrs = my.misc.join_level_onto_index(
@@ -141,15 +144,15 @@ big_abrs = my.misc.join_level_onto_index(
 
 
 ## Further aggregate big_abrs
-# Mean out recording, leaving date
+# Mean out recording, leaving n_experiment
 averaged_abrs_by_date = big_abrs.groupby(
     [lev for lev in big_abrs.index.names if lev != 'recording']
     ).mean()
 
-# Mean out date, leaving mouse
-averaged_abrs_by_mouse = averaged_abrs_by_date.groupby(
-    [lev for lev in averaged_abrs_by_date.index.names if lev != 'date']
-    ).mean()
+# Keep only the first experiment from each mouse
+# Better to keep the first than to average, because the two experiments
+# may be different-looking or out of phase
+averaged_abrs_by_mouse = averaged_abrs_by_date.xs(0, level='n_experiment')
 
 
 ## Plots

@@ -88,7 +88,7 @@ big_abr_evoked_rms = big_abr_evoked_rms.groupby(
 # Aggregate over dates within a mouse * after_HL
 # TODO: consider just taking the first date instead
 big_abr_evoked_rms = big_abr_evoked_rms.groupby(
-    [lev for lev in big_abr_evoked_rms.index.names if lev != 'date'],
+    [lev for lev in big_abr_evoked_rms.index.names if lev != 'n_experiment'],
     ).mean()
 
 
@@ -151,7 +151,7 @@ if PLOT_ABR_RMS_OVER_TIME:
     # Aggregate over date
     # TODO: keep just the first session from each mouse instead?
     to_agg = to_agg.groupby(
-        [lev for lev in to_agg.index.names if lev != 'date']
+        [lev for lev in to_agg.index.names if lev != 'n_experiment']
         ).mean()
 
     # Make mouse the replicates on the columns
@@ -394,7 +394,7 @@ if PLOT_ABR_POWER_VS_LEVEL_AFTER_HL:
         [lev for lev in this_threshold_db.index.names if lev != 'recording']
         ).mean()
     threshold_db_agg = threshold_db_agg.groupby(
-        [lev for lev in threshold_db_agg.index.names if lev != 'date']
+        [lev for lev in threshold_db_agg.index.names if lev != 'n_experiment']
         ).mean()
 
     # Aggregate evoked RMS over date and recording, maintaining after_HL
@@ -402,7 +402,7 @@ if PLOT_ABR_POWER_VS_LEVEL_AFTER_HL:
         [lev for lev in this_big_abr_evoked_rms.index.names if lev != 'recording']
         ).mean()
     big_abr_evoked_rms_agg = big_abr_evoked_rms_agg.groupby(
-        [lev for lev in big_abr_evoked_rms_agg.index.names if lev != 'date']
+        [lev for lev in big_abr_evoked_rms_agg.index.names if lev != 'n_experiment']
         ).mean()
         
     
