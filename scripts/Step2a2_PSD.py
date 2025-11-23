@@ -19,6 +19,7 @@ import matplotlib.pyplot as plt
 ## Plotting
 my.plot.manuscript_defaults()
 my.plot.font_embed()
+MU = chr(956)
 
 
 ## Paths
@@ -103,7 +104,9 @@ ax.set_xlim((1e0, 1e4))
 
 # y axis
 # https://stackoverflow.com/questions/21226868/superscript-in-python-plots
-ax.set_ylabel('power spectral density\n(dB re 1 $\mathregular{uV^2}$/Hz)')
+ax.set_ylabel(
+    f'power spectral density\n(dB re 1 {MU}'
+    '$\mathregular{V^2}$/Hz)')
 ax.set_yticks((-40, -20, 0, 20, 40))
 ax.set_ylim((-40, 40))
 
