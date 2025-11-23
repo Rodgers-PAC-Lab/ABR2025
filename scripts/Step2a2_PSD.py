@@ -9,17 +9,11 @@
 #   PSD_BY_CHANNEL and STATS__PSD_BY_CHANNEL
 
 import os
-import datetime
-import glob
 import json
-import scipy.signal
 import numpy as np
 import pandas
-import paclab
-from paclab import abr
 import my.plot
 import matplotlib.pyplot as plt
-import tqdm
 
 
 ## Plotting
@@ -138,11 +132,19 @@ f.savefig('figures/PSD_BY_CHANNEL.svg')
 f.savefig('figures/PSD_BY_CHANNEL.png', dpi=300)
 
 # Stats
-with open('figures/STATS__PSD_BY_CHANNEL', 'w') as fi:
+stats_filename = 'figures/STATS__PSD_BY_CHANNEL'
+with open(stats_filename, 'w') as fi:
+    fi.write(stats_filename + '\n')
     fi.write(f'n = {n_recordings} recordings from n = {n_mice} mice\n')
     fi.write('aggregated within mouse and then across mice\n')
     fi.write('error bars: SEM over mice\n')
-    
+
+# Echo
+with open(stats_filename) as fi:
+    print(''.join(fi.readlines()))   
+
+# Show
+plt.show()
 
 ## Store
 big_Pxx.to_pickle(os.path.join(output_directory, 'big_Pxx'))
