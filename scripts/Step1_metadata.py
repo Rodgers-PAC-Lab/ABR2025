@@ -13,18 +13,13 @@
 #   experiment_metadata : one row per experiment (mouse * date)
 #   recording_metadata: one row per recording, indexed by date * mouse * recording
 
-# TODO: 
-# mouse_metadata['HL_type'] = mouse_metadata['HL_type'].fillna('none')
-
-
 import os
 import datetime
-import glob
 import json
 import numpy as np
 import pandas
 import paclab
-from paclab import abr
+import ABR2025
 import tqdm
 
 
@@ -67,6 +62,8 @@ experiment_metadata = paclab.load_gsheet.load(
     '1J0AFGFZp5V91GxNgEJvWDqN1v0S22znYZwBFbDCbEes', 
     sheet_name='experiment metadata', normalize_case=False)
 
+
+## Clean metadata
 # When exporting to CSV first, datetime-like columns are str
 # Turn the dates into actual datetime dates
 # For compatibility with the code below, force them back into str and drop the
@@ -82,6 +79,10 @@ mouse_metadata['HL_date'] = mouse_metadata['HL_date'].apply(
 assert not mouse_metadata.duplicated().any()
 assert not experiment_metadata.duplicated().any()
 
+# Replace null HL_type with the string 'none', because otherwise it is
+# awkwardly dropped by `groupby`
+mouse_metadata['HL_type'] = mouse_metadata['HL_type'].fillna('none')
+
 # When downloading directly from google, datetime-like columns are Timestamp
 experiment_metadata['date'] = experiment_metadata['date'].apply(
     lambda x: datetime.datetime.strptime(x, '%Y-%m-%d').date())
@@ -93,6 +94,8 @@ mouse_metadata['HL_date'] = mouse_metadata['HL_date'].apply(
     lambda x: None if pandas.isnull(x) else 
     datetime.datetime.strptime(x, '%Y-%m-%d').date())
 
+
+## Calculate more metadata
 # Calculate age on the day of the experiment
 experiment_metadata = experiment_metadata.join(
     mouse_metadata.set_index('mouse')['DOB'], on='mouse')
@@ -151,21 +154,12 @@ for idx in tqdm.tqdm(experiment_metadata.index):
         raw_data_directory, folder_datestr, experimenter)
     
     # Load metadata for the day (hardcoding v6)
-    this_date_metadata = abr.loading.get_metadata(
+    this_date_metadata = ABR2025.loading.get_metadata(
         data_directory, experiment_date.strftime('%y%m%d'), 'v6')
     
     # Check that we actually found data
     assert len(this_date_metadata) > 0
     assert mouse in this_date_metadata['mouse'].values
-
-    # Warn about mice that we are dropping
-    # TODO: make sure these are all 5xFAD+
-    drop_mice = this_date_metadata['mouse'].unique()
-    ignoring_mice = [
-        mouse for mouse in drop_mice 
-        if mouse not in mouse_metadata['mouse'].values]
-    if len(ignoring_mice) > 0:
-        print(f'warning: ignoring mice {ignoring_mice}')
     
     # Include only data from this mouse
     this_date_metadata = this_date_metadata[
@@ -208,15 +202,12 @@ recording_metadata['include'] = recording_metadata['include'].fillna(True)
 # Drop those with 'include' == False
 recording_metadata = recording_metadata[recording_metadata['include'] == True]
 
-# Drop these with torn data
-to_drop = [
-    (datetime.date(2025, 3, 10), 'Ketchup_208', 9),
-    (datetime.date(2025, 3, 10), 'Ketchup_209', 5),
-    (datetime.date(2025, 2, 19), 'PowerRainbow2', 3),
-    (datetime.date(2025, 2, 19), 'PowerRainbow2', 4),
-    (datetime.date(2025, 2, 19), 'PowerRainbow2', 6),
-    ]
-recording_metadata = recording_metadata.drop(to_drop)
+
+## Error check that we always have >1 recordings per speaker_side
+recordings_per_side = recording_metadata.groupby(
+    ['date', 'mouse', 'speaker_side']).size().unstack('speaker_side')
+
+assert (recordings_per_side > 1).all().all()
 
 
 ## Error check that amplitude is always the same
