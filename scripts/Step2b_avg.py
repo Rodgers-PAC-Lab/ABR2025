@@ -2,23 +2,14 @@
 # Writes out:
 #   big_abrs - averaged ABRs
 #   trial_counts - trial counts
+#   averaged_abrs_by_date - averaged ABRs aggregated by date
+#   averaged_abrs_by_mouse - averaged ABRs aggregated by mouse
 #
 # Plots:
 #   PLOT_SINGLE_TRIAL_ABR
 #   PLOT_TRIAL_AVERAGED_ABR
 #   PLOT_POSITIVE_AND_NEGATIVE_CLICKS
 
-
-"""
-# TODO: do this upstream
-averaged_abrs_by_date = big_abrs.groupby(
-    [lev for lev in big_abrs.index.names if lev != 'recording']
-    ).mean()
-
-averaged_abrs_by_mouse = averaged_abrs_by_date.groupby(
-    [lev for lev in averaged_abrs_by_date.index.names if lev != 'date']
-    ).mean()
-"""
 
 import os
 import datetime
@@ -55,12 +46,14 @@ stdev_sigma = 3
 
 ## Load previous results
 # Load results of Step1
+mouse_metadata = pandas.read_pickle(
+    os.path.join(output_directory, 'mouse_metadata'))
+experiment_metadata = pandas.read_pickle(
+    os.path.join(output_directory, 'experiment_metadata'))
 recording_metadata = pandas.read_pickle(
     os.path.join(output_directory, 'recording_metadata'))
 
-# Load results of Step2
-big_triggered_ad = pandas.read_pickle(
-    os.path.join(output_directory, 'big_triggered_ad'))
+# Load results of Step2a1_align
 big_triggered_neural = pandas.read_pickle(
     os.path.join(output_directory, 'big_triggered_neural'))
 big_click_params = pandas.read_pickle(
@@ -129,6 +122,34 @@ big_arts = 0.5 * (
     by_polarity.xs(True, level='polarity') - 
     by_polarity.xs(False, level='polarity')
     )
+
+
+## Join metadata on big_abrs
+# Join after_HL onto big_abrs
+big_abrs = my.misc.join_level_onto_index(
+    big_abrs, 
+    experiment_metadata.set_index(['mouse', 'date'])['after_HL'], 
+    join_on=['mouse', 'date']
+    )
+
+# Join HL_type onto big_abrs
+big_abrs = my.misc.join_level_onto_index(
+    big_abrs, 
+    mouse_metadata.set_index('mouse')['HL_type'], 
+    join_on='mouse',
+    )
+
+
+## Further aggregate big_abrs
+# Mean out recording, leaving date
+averaged_abrs_by_date = big_abrs.groupby(
+    [lev for lev in big_abrs.index.names if lev != 'recording']
+    ).mean()
+
+# Mean out date, leaving mouse
+averaged_abrs_by_mouse = averaged_abrs_by_date.groupby(
+    [lev for lev in averaged_abrs_by_date.index.names if lev != 'date']
+    ).mean()
 
 
 ## Plots
@@ -276,4 +297,6 @@ plt.show()
 
 ## Store
 big_abrs.to_pickle(os.path.join(output_directory, 'big_abrs'))
+averaged_abrs_by_date.to_pickle(os.path.join(output_directory, 'averaged_abrs_by_date'))
+averaged_abrs_by_mouse.to_pickle(os.path.join(output_directory, 'averaged_abrs_by_mouse'))
 trial_counts.to_pickle(os.path.join(output_directory, 'trial_counts'))
