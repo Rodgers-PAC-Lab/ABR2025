@@ -22,14 +22,10 @@ averaged_abrs_by_mouse = averaged_abrs_by_date.groupby(
 
 import os
 import datetime
-import glob
 import json
-import scipy.signal
 import numpy as np
 import pandas
-import paclab
-import paclab.abr.abr_plotting
-from paclab import abr
+import ABR2025
 import my.plot
 import matplotlib.pyplot as plt
 import tqdm
@@ -95,7 +91,7 @@ gobj = big_triggered_neural.groupby(group_by)
 # We use this helper function to drop the groupby levels, otherwise
 # the levels get duplicated by gobj.apply
 def drop_outliers(df):
-    res = abr.signal_processing.trim_outliers(
+    res = ABR2025.signal_processing.trim_outliers(
         df.droplevel(group_by),
         abs_max_sigma=abs_max_sigma,
         stdev_sigma=stdev_sigma,
@@ -188,7 +184,7 @@ if PLOT_TRIAL_AVERAGED_ABR:
     # Set up colorbar
     # Always do the lowest labels last
     label_l = sorted(trial_averaged_abr.index, reverse=True)
-    aut_colorbar = paclab.abr.abr_plotting.generate_colorbar(
+    aut_colorbar = my.plot.generate_colorbar(
         len(label_l), mapname='inferno_r', start=0.15, stop=1)[::-1]
 
     # Plot
