@@ -4,13 +4,11 @@
 
 import os
 import datetime
-import glob
 import json
 import scipy.signal
 import numpy as np
 import pandas
-import paclab.abr
-from paclab import abr
+import ABR2025
 import my.plot
 import matplotlib.pyplot as plt
 
@@ -97,7 +95,7 @@ recording_folder = os.path.normpath(
     os.path.join(raw_data_directory, this_recording['short_datafile']))
 
 # Load the data
-data = abr.loading.load_recording(recording_folder)
+data = ABR2025.loading.load_recording(recording_folder)
 data = data['data']
 
 # Parse into neural and speaker data
@@ -110,7 +108,7 @@ neural_data_V = data[:, neural_channel_numbers]
 threshold_V = 10 ** amplitude_cuts.min()
 
 # Identify clicks
-identified_clicks = abr.signal_processing.identify_click_times(
+identified_clicks = ABR2025.signal_processing.identify_click_times(
     speaker_signal_V, 
     threshold_V=threshold_V,
     sampling_rate=sampling_rate, 
@@ -122,7 +120,7 @@ identified_clicks = abr.signal_processing.identify_click_times(
 speaker_signal_hp = identified_clicks['highpassed']
 
 # Categorize them
-click_params = abr.signal_processing.categorize_clicks(
+click_params = ABR2025.signal_processing.categorize_clicks(
     identified_clicks['peak_time_samples'], 
     speaker_signal_hp, 
     amplitude_cuts, 
