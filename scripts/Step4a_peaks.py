@@ -245,10 +245,16 @@ if STRIP_PLOT_PEAK_HEIGHT:
     ## Run stats
     # `metric ~ 'channel' + 'speaker_side'` isn't so informative, because
     # the primary variable is 'ipsi', which isn't well-defined for LR.
-    # `metric ~ 'channel' + 'ipsi'`, restricted to vertex-ear only,
-    # reveals a significant ipsi preference
-    # This is barely significant for L sounds, due to the overall 
-    # bias toward R sounds.
+    # `metric ~ 'channel' + 'ipsi' + 'speaker_side' + 'mouse'`, 
+    # restricted to vertex-ear only, reveals
+    # - a strongly significant effect of mouse (of course)
+    # - a strongly significant effect preferring contra sounds
+    # - a mildly significant effect of speaker_side (preferring left sounds)
+    # - a mildly significant effect of channel (preferring LV)
+    # Many of the post-hoc comparisons are n.s. because these effects
+    # cancel each other out. For instance, in LV recordings, R should be
+    # larger (because contra) but this is canceled out by the preference
+    # for left sounds. 
     
     # Count mice
     n_mice = len(primary_peak.index.get_level_values('mouse').unique())
@@ -258,7 +264,7 @@ if STRIP_PLOT_PEAK_HEIGHT:
     to_anova['ipsi'] = to_anova['channel'].str[0] == to_anova['speaker_side']
     aov_res = my.stats.anova(
         to_anova[to_anova['channel'] != 'LR'], 
-        f'{metric} ~ channel + ipsi',
+        f'{metric} ~ channel + speaker_side + ipsi + mouse',
         )
     
     # Get post-hoc t-test for each
@@ -367,11 +373,19 @@ if STRIP_PLOT_PEAK_LATENCY:
     n_mice = len(primary_peak.index.get_level_values('mouse').unique())
     
     # Run anova
+    # AOV reveals:
+    # - strongly significant effect of mouse (of course)
+    # - strongly significant effect of ipsi (ipsi is faster)
+    # - weakly significant effect of channel (RV is faster)
+    # - non-significant effect of speaker side (left is a little faster)
+    # The effect of ipsi holds up in the post hocs, although it is marginal
+    # for RV, because the effect where left is faster counteracts the effect
+    # where ipsi is faster
     to_anova = primary_peak.reset_index()
     to_anova['ipsi'] = to_anova['channel'].str[0] == to_anova['speaker_side']
     aov_res = my.stats.anova(
         to_anova[to_anova['channel'] != 'LR'], 
-        f'{metric} ~ channel + ipsi',
+        f'{metric} ~ channel + speaker_side + ipsi + mouse',
         )
     
     # Get post-hoc t-test for each
@@ -420,9 +434,8 @@ if STRIP_PLOT_PEAK_LATENCY:
     mu2 = by_mouse.mean()
     err2 = by_mouse.sem()
     
-    
 
-    # Write out stats
+    ## Write out stats
     stats_filename = 'figures/STATS__STRIP_PLOT_PEAK_LATENCY'
     with open(stats_filename, 'w') as fi:
         fi.write(stats_filename + '\n')
@@ -541,7 +554,7 @@ if OVERPLOT_LOUDEST_WITH_PEAKS:
     
     # Scale bar
     axa[0, -1].plot([6, 6], [3, 5], 'k-', lw=.75, clip_on=False)
-    axa[0, -1].text(6.2, 4, '2 uV', ha='left', va='center', size=12)
+    axa[0, -1].text(6.2, 4, f'2 {MU}V', ha='left', va='center', size=12)
     
     # Label the channel
     for n_channel, channel in enumerate(channel_l):
