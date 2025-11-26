@@ -3,8 +3,6 @@
 # There are some mice with higher 60 Hz or other types of noise, but
 # they aren't extreme outliers
 #
-# TODO: check these PSDs by sex and hearing loss condition
-#
 # Plots
 #   PSD_BY_CHANNEL and STATS__PSD_BY_CHANNEL
 
@@ -41,12 +39,33 @@ neural_channel_numbers = [0, 2, 4]
 
 ## Load previous results
 # Load results of Step1
+mouse_metadata = pandas.read_pickle(
+    os.path.join(output_directory, 'mouse_metadata'))
+experiment_metadata = pandas.read_pickle(
+    os.path.join(output_directory, 'experiment_metadata'))
 recording_metadata = pandas.read_pickle(
     os.path.join(output_directory, 'recording_metadata'))
-
-# Load results of Step2
 big_Pxx = pandas.read_pickle(
     os.path.join(output_directory, 'big_Pxx'))
+
+# Join sex and HL on big_Pxx
+to_join = experiment_metadata[['after_HL', 'date', 'mouse', 'experimenter']].copy()
+to_join['experimenter'] = to_join['experimenter'].replace({'cedric': 'Cedric'})
+big_Pxx = my.misc.join_level_onto_index(
+    big_Pxx, 
+    to_join.set_index(['date', 'mouse']), 
+    join_on=['date', 'mouse'])
+big_Pxx = my.misc.join_level_onto_index(
+    big_Pxx, mouse_metadata[['sex', 'mouse', 'HL_type']].set_index(
+    'mouse'), join_on='mouse')
+
+# TODO: make figures showing this
+# after_HL does not change much, except possibly a global attenuation
+# sex causes changes in the putative EMG range (300-600 Hz)
+# There may also be experimenter differences
+# For now, drop these levels and continue
+big_Pxx = big_Pxx.droplevel(
+    ['sex', 'experimenter', 'HL_type', 'after_HL']).sort_index()
 
 
 ## Compute average PSD
