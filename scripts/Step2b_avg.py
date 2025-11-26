@@ -187,7 +187,8 @@ if PLOT_SINGLE_TRIAL_ABR:
 
     # Plot the stimulus
     ax.plot([0, 0.1], [5.5 / 6 * 8] * 2, 'k-', lw=3)
-    
+
+    # Savefig
     f.savefig('figures/PLOT_SINGLE_TRIAL_ABR.svg')
     f.savefig('figures/PLOT_SINGLE_TRIAL_ABR.png', dpi=300)
 
