@@ -138,53 +138,6 @@ corr_across_sessions = corr_across_sessions.loc[~(
 corr_across_sessions = corr_across_sessions[corr_across_sessions['order'] == 'forward']
 
 
-## Commenting this out because this analysis is confusing and maybe unnecessary
-#~ ## Now correlate over recordings within a single session, as a point of comparison
-#~ # Note that this aggregation is slightly different than the across-session
-#~ # analysis, because the within-session analysis compares only recordings
-#~ # with the same speaker_side and channel
-#~ grouping_keys = ['date', 'mouse', 'channel', 'speaker_side']
-#~ mean_corr_l = []
-#~ keys_l = []
-#~ for grouped_key, subdf in big_abrs.groupby(grouping_keys):
-    #~ # Drop grouping keys
-    #~ subdf = subdf.droplevel(grouping_keys)
-    
-    #~ # Unstack label
-    #~ subdf = subdf.unstack('label')
-
-    #~ # Continue if not enough to compare
-    #~ if len(subdf) == 1:
-        #~ continue
-    
-    #~ # Corr
-    #~ this_corr = subdf.T.corr()
-    #~ this_corr[np.tri(len(this_corr)).astype(bool)] = np.nan
-    #~ mean_corr = this_corr.stack(future_stack=True).mean()
-    
-    #~ # Store
-    #~ mean_corr_l.append(mean_corr)
-    #~ keys_l.append(grouped_key)
-
-#~ # Concat
-#~ within_experiment_corr = pandas.Series(
-    #~ mean_corr_l, 
-    #~ index=pandas.MultiIndex.from_tuples(keys_l, names=grouping_keys))
-
-#~ # Keep only mice with multiple sessions
-#~ # TODO: do this consistently for both analyses instead of repeating here
-#~ within_experiment_corr = within_experiment_corr.reindex(
-    #~ mice_with_multiple_sessions, level='mouse')
-
-#~ # Mean over channel and speaker side
-#~ # Note that LR is slightly less corr than LV and RV, and left sounds are
-#~ # more correlated than right sounds
-#~ within_session_corr = within_experiment_corr.groupby(['date', 'mouse']).mean()
-
-#~ # Mean over session
-#~ within_mouse_corr = within_session_corr.groupby('mouse').mean()
-
-
 ## Plots
 HIST_CORRELATION_ACROSS_MICE = True
 HEATMAP_CORRELATION_ACROSS_MICE = True
