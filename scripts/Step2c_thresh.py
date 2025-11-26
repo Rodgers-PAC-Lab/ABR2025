@@ -285,6 +285,26 @@ if PLOT_ABR_POWER_VS_LEVEL:
     this_big_abr_evoked_rms = big_abr_evoked_rms.xs(
         False, level='after_HL').droplevel('HL_type')
 
+    #~ ## TODO: analyze effect of speaker_side and channel on evoked response here
+    #~ # huge effect of label and mouse, of course
+    #~ # very strong effect of ipsi (contra is stronger)
+    #~ # strong effect of channel (LV is stronger)
+    #~ # mild effect of speaker_side (L is stronger)
+    #~ # However, the actual effect size of contra is pretty small (around the 
+    #~ # size of a 4 dB difference, and only about twice the size of the effect
+    #~ # of channel or speaker_side), so I don't know that it's worth
+    #~ # highlighting
+    #~ actual_data = np.log10(
+        #~ this_big_abr_evoked_rms.drop('LR', level='channel').iloc[:, ::40])
+    
+    #~ # prep for anova
+    #~ to_aov = actual_data.stack().rename('resp').reset_index()
+    #~ to_aov['ipsi'] = to_aov['speaker_side'] == to_aov['channel'].str[0]
+    
+    #~ # run anova
+    #~ my.stats.anova(
+        #~ to_aov, 'resp ~ mouse + label + channel + speaker_side + ipsi')
+    
     # Set up ax_rows and ax_cols
     channel_l = ['LV', 'RV', 'LR']
     speaker_side_l = ['L', 'R']
@@ -335,8 +355,8 @@ if PLOT_ABR_POWER_VS_LEVEL:
         # Despine
         my.plot.despine(ax)
         ax.set_yticks([0.1, 1])
-        ax.set_xticks([20, 40, 60])
-        ax.set_xlim((10, 70))
+        ax.set_xticks([30, 50, 70])
+        ax.set_xlim((20, 80))
         ax.yaxis.set_major_formatter(matplotlib.ticker.ScalarFormatter())
 
 
@@ -476,7 +496,7 @@ if PLOT_ABR_POWER_VS_LEVEL_AFTER_HL:
             # Despine
             my.plot.despine(ax)
             ax.set_yticks([0.1, 1])
-            ax.set_xticks([20, 40, 60])
+            ax.set_xticks([30, 50, 70])
             ax.yaxis.set_major_formatter(matplotlib.ticker.ScalarFormatter())
 
         # Shared x-axis
@@ -544,8 +564,8 @@ if PLOT_ABR_POWER_VS_LEVEL_AFTER_HL:
         axa[0, 1].set_title(HL_type_l[1])
         
         # Consistent axis limits
-        ax.set_ylim((10, 60))
-        ax.set_yticks((20, 35, 50))
+        ax.set_ylim((20, 70))
+        ax.set_yticks((30, 45, 60))
         ax.set_xticks((0, 1))
         ax.set_xlim((-.5, 1.5))
         ax.set_xticklabels(('pre', 'post'))
@@ -555,6 +575,35 @@ if PLOT_ABR_POWER_VS_LEVEL_AFTER_HL:
         f.savefig(savename + '.svg')
         f.savefig(savename + '.png', dpi=300)
 
+
+        ## Stats
+        # Threshold (meaning over channel * speaker_side)
+        thresh_by_mouse = threshold_db_agg.groupby(
+            ['HL_type', 'after_HL', 'mouse']).mean().unstack('after_HL')
+        thresh_by_mouse_mu = thresh_by_mouse.groupby('HL_type').mean()
+        thresh_by_mouse_err = thresh_by_mouse.groupby('HL_type').sem()
+        thresh_by_mouse_N = thresh_by_mouse.groupby('HL_type').size()
+        thresh_by_mouse_diff = thresh_by_mouse.diff(axis=1).iloc[:, 1]
+        thresh_by_mouse_diff_mu = thresh_by_mouse_diff.groupby('HL_type').mean()
+        thresh_by_mouse_diff_err = thresh_by_mouse_diff.groupby('HL_type').sem()
+        thresh_by_mouse_diff_N = thresh_by_mouse_diff.groupby('HL_type').size()
+        
+        # Write out
+        stats_filename = f'figures/PLOT_ABR_POWER_VS_LEVEL_AFTER_HL__thresh__{speaker_side}'
+        with open(stats_filename, 'w') as fi:
+            fi.write(stats_filename + '\n')
+            fi.write(f'mean threshold:\n{thresh_by_mouse_mu}\n')
+            fi.write(f'SEM threshold:\n{thresh_by_mouse_err}\n')
+            fi.write(f'N threshold:\n{thresh_by_mouse_N}\n')
+            fi.write(f'mean diff threshold:\n{thresh_by_mouse_diff_mu}\n')
+            fi.write(f'SEM diff threshold:\n{thresh_by_mouse_diff_err}\n')
+            fi.write(f'N diff threshold:\n{thresh_by_mouse_diff_N}\n')
+        
+        # Echo
+        with open(stats_filename) as fi:
+            print(''.join(fi.readlines()))        
+        
+        
 
 if BASELINE_VS_N_TRIALS:
     ## Plot the noise level as a function of trial count
