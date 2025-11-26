@@ -114,7 +114,7 @@ corr_df['norm'] = corr_df['val'] / corr_df['max'] ** 2
 # The delays become highly variable (random) for the lower levels
 # Dropping delays with low 'norm' introduces strange selection effects
 # Better to just give up on lowest levels
-corr_df = corr_df[corr_df.index.get_level_values('label') >= 24]
+corr_df = corr_df[corr_df.index.get_level_values('label') >= 34]
 
 
 ## Plots
@@ -942,8 +942,8 @@ if PLOT_DELAY_VS_LEVEL:
     
     # Pretty
     my.plot.despine(ax)
-    ax.set_xlim((20, 65))
-    ax.set_xticks((20, 40, 60))
+    ax.set_xlim((35, 75))
+    ax.set_xticks((40, 50, 60, 70))
     ax.set_ylim((0, 0.4))
     ax.set_yticks((0, 0.2, 0.4))
     
