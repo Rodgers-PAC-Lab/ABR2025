@@ -63,8 +63,7 @@ big_abr_stds = big_abrs.T.rolling(window=20, center=True, min_periods=1).std().T
 
 ## Calculate the baseline
 # Use samples -40 to -20 as baseline
-# Generally this should be <0.25 uV, but the actual value depends on how
-# the averaging was done
+# Generally this should be 50-100 nV, depending on the number of trials
 big_abr_baseline_rms = big_abr_stds.loc[:, -30].unstack('label')
 
 # Choose a baseline for each recording as the median over levels
@@ -172,7 +171,7 @@ if PLOT_ABR_RMS_OVER_TIME:
         agg_mean.index.get_level_values('label').unique(), 
         reverse=True)
     aut_colorbar = my.plot.generate_colorbar(
-        len(label_l), mapname='inferno_r', start=0.15, stop=1)[::-1]  
+        len(label_l), mapname='inferno_r', start=0.15, stop=1)  
 
     # Set up ax_rows and ax_cols
     channel_l = ['LV', 'RV', 'LR']
