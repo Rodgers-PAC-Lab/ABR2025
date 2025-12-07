@@ -143,6 +143,28 @@ big_abrs = my.misc.join_level_onto_index(
     )
 
 
+## Join metadata on trial_counts in the same way
+# Join after_HL and n_experiment onto trial_counts
+trial_counts = my.misc.join_level_onto_index(
+    trial_counts, 
+    experiment_metadata.set_index(['mouse', 'date'])[['after_HL', 'n_experiment']], 
+    join_on=['mouse', 'date']
+    )
+
+# Drop the now unnecessary level 'date' (replaced with n_experiment)
+trial_counts = trial_counts.droplevel('date')
+
+# Join HL_type onto big_abrs
+trial_counts = my.misc.join_level_onto_index(
+    trial_counts, 
+    mouse_metadata.set_index('mouse')['HL_type'], 
+    join_on='mouse',
+    )
+
+# Reorder level to match big_abrs
+trial_counts = trial_counts.reorder_levels(big_abrs.index.names).sort_index()
+
+
 ## Further aggregate big_abrs
 # Mean out recording, leaving n_experiment
 averaged_abrs_by_date = big_abrs.groupby(
