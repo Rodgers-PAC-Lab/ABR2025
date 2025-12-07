@@ -173,7 +173,7 @@ if GRAND_AVG_ABR_PLOT:
             this_grand_average.index.get_level_values('label').unique(), 
             reverse=True)
         aut_colorbar = my.plot.generate_colorbar(
-            len(label_l), mapname='inferno_r', start=0.15, stop=1)[::-1]
+            len(label_l), mapname='inferno_r', start=0.15, stop=1)
         
         # Make handles
         f, axa = plt.subplots(3, 2, sharex=True, sharey=True, figsize=(5.4, 4))
@@ -296,7 +296,7 @@ if GRAND_AVG_ABR_PLOT_PERI_HL:
             this_grand_average.index.get_level_values('label').unique(), 
             reverse=True)
         aut_colorbar = my.plot.generate_colorbar(
-            len(label_l), mapname='inferno_r', start=0.15, stop=1)[::-1]
+            len(label_l), mapname='inferno_r', start=0.15, stop=1)
         
         # Make handles
         f, axa = plt.subplots(3, 2, sharex=True, sharey=True, figsize=(5.4, 4))
@@ -445,7 +445,7 @@ if GRAND_AVG_IMSHOW:
                 )
             
             # Pretty
-            ax.set_yticks((20, 60))
+            ax.set_yticks((30, 70))
             ax.set_xticks((0, 3, 6))
             ax.set_xlim((-1, 7))
         
@@ -548,7 +548,7 @@ if GRAND_AVG_IMSHOW_PERI_HL:
                 )
             
             # Pretty
-            ax.set_yticks((20, 60))
+            ax.set_yticks((30, 70))
             ax.set_xticks((0, 3, 6))
             ax.set_xlim((-1, 7))
         
