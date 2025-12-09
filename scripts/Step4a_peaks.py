@@ -190,15 +190,16 @@ assert len(primary_peak) == len(new_index) * 6
 
 ## Plots
 STRIP_PLOT_PEAK_HEIGHT = True
-STRIP_PLOT_PEAK_LATENCY = True
-OVERPLOT_LOUDEST_WITH_PEAKS = True
+STRIP_PLOT_PEAK_LATENCY = False
+OVERPLOT_LOUDEST_WITH_PEAKS = False
 
 
 if STRIP_PLOT_PEAK_HEIGHT:
     ## Plot distribution of primary peak heights
     
     # Create figure handles
-    f, ax = my.plot.figure_1x1_standard()
+    f, ax = plt.subplots(figsize=(2.5, 2.5))
+    f.subplots_adjust(bottom=.24, left=.35, right=.93, top=.89)
     
     # Choose height or prominence
     metric = 'height'
@@ -211,7 +212,7 @@ if STRIP_PLOT_PEAK_HEIGHT:
         hue='speaker_side', 
         marker="$\circ$",
         alpha=0.5,
-        order=['LV', 'RV', 'LR'],
+        order=['LV', 'RV'],#, 'LR'],
         hue_order=['L', 'R'], 
         ax=ax, 
         dodge=True, 
@@ -220,7 +221,7 @@ if STRIP_PLOT_PEAK_HEIGHT:
         )
 
     # Connect the pairs
-    for n_channel, channel in enumerate(['LV', 'RV', 'LR']):
+    for n_channel, channel in enumerate(['LV', 'RV']):#, 'LR']):
         for mouse in primary_peak.index.levels[0]:
             lval = primary_peak[metric].loc[mouse].loc[channel].loc['L']
             rval = primary_peak[metric].loc[mouse].loc[channel].loc['R']
@@ -269,7 +270,7 @@ if STRIP_PLOT_PEAK_HEIGHT:
     
     # Get post-hoc t-test for each
     pvalue_l = []
-    channel_l = ['LV', 'RV', 'LR']
+    channel_l = ['LV', 'RV']#, 'LR']
     for channel in channel_l:
         # Slice channel
         to_compare = primary_peak[metric].xs(
@@ -284,7 +285,7 @@ if STRIP_PLOT_PEAK_HEIGHT:
     
     
     ## Plot stats
-    for n_channel, channel in enumerate(['LV', 'RV', 'LR']):
+    for n_channel, channel in enumerate(['LV', 'RV']):#, 'LR']):
         # Plot a line
         xval = [
             n_channel - .2,
@@ -311,7 +312,26 @@ if STRIP_PLOT_PEAK_HEIGHT:
         fi.write(f'paired t-test p-value on L vs R for {metric}:\n')
         fi.write(str(pvalue_ser) + '\n')
         fi.write(f'mean:\n{mu}\n')
-        fi.write(f'SEM:\n{err}\n')    
+        fi.write(f'SEM:\n{err}\n')
+        fi.write('\n')
+        fi.write(f'ANOVA on peak height ~ contra + speaker_side + channel\n')
+        fi.write(f'in following coeffs a negative beta indicates stronger response\n')
+        fi.write(
+            'contra pref: {:.2g} uV; p={:.2g}\n'.format(
+            -aov_res['fit']['fit_ipsi[T.True]'], # invert ipsi term
+            aov_res['pvals']['p_ipsi'],
+            ))
+        fi.write(
+            'left pref: {:.2g} uV; p={:.2g}\n'.format(
+            -aov_res['fit']['fit_speaker_side[T.R]'], # invert T.R term
+            aov_res['pvals']['p_speaker_side'],
+            ))
+        fi.write(
+            'LV pref: {:.2g} uV; p={:.2g}\n'.format(
+            -aov_res['fit']['fit_channel[T.RV]'], # invert T.RV term
+            aov_res['pvals']['p_channel'],
+            ))
+        fi.write('intercept: {:.2g} uV\n'.format(aov_res['fit']['fit_Intercept']))
     
     # Echo
     with open(stats_filename) as fi:
@@ -323,6 +343,40 @@ if STRIP_PLOT_PEAK_HEIGHT:
     f.savefig(savename + '.svg')
     f.savefig(savename + '.png', dpi=300)
 
+#~ if STRIP_PLOT_PEAK_HEIGHT2:
+    #~ ## Plot distribution of primary peak heights
+    
+    #~ # Create figure handles
+    #~ f, ax = my.plot.figure_1x1_standard()
+    
+    #~ # Slice data
+    #~ data = primary_peak['height'].reset_index()
+    
+    #~ # Drop LR, for which ipsi/contra cannot be defined
+    #~ data = data[data['channel'] != 'LR']
+    
+    #~ # Indicate ipsi/contra
+    #~ data['ipsi'] = data['channel'].str[0] == data['speaker_side']
+
+    #~ # Reindex
+    #~ data = data.set_index(['channel', 'speaker_side', 'ipsi', 'mouse'])['height'].sort_index()
+    
+    
+    #~ ## Compute each marginal
+    #~ # Slice by channel and average within mouse
+    #~ by_channel_LV = data.xs('LV', level='channel').groupby('mouse').mean()
+    #~ by_channel_RV = data.xs('RV', level='channel').groupby('mouse').mean()
+    #~ by_channel_diff = by_channel_RV - by_channel_LV
+
+    #~ by_speaker_side_L = data.xs('L', level='speaker_side').groupby('mouse').mean()
+    #~ by_speaker_side_R = data.xs('R', level='speaker_side').groupby('mouse').mean()
+    #~ by_speaker_side_diff = by_speaker_side_R - by_speaker_side_L
+
+    #~ by_ipsi_True = data.xs(True, level='ipsi').droplevel('speaker_side')
+    #~ by_ipsi_False = data.xs(False, level='ipsi').droplevel('speaker_side')
+    #~ by_ipsi_diff = by_ipsi_True - by_ipsi_False
+
+    
 if STRIP_PLOT_PEAK_LATENCY:
     ## Plot distribution of primary peak latencies by channel and speaker_side
     
