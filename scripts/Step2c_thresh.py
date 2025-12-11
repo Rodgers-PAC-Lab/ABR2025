@@ -382,6 +382,15 @@ if PLOT_ABR_POWER_VS_LEVEL:
 
     ## Stats
     n_mice = len(this_threshold_db.index.get_level_values('mouse').unique())
+    thresh_by_mouse = this_threshold_db.groupby('mouse').mean()
+    thresh_by_mouse_mu = thresh_by_mouse.mean()
+    thresh_by_mouse_std = thresh_by_mouse.std()
+    thresh_by_mouse_sem = thresh_by_mouse.sem()
+    thresh_by_channel = this_threshold_db.groupby('channel').mean()
+    ipsi_thresh = this_threshold_db.unstack('mouse').loc[
+        [('LV', 'L'), ('RV', 'R')]].mean().mean()
+    contra_thresh = this_threshold_db.unstack('mouse').loc[
+        [('RV', 'L'), ('LV', 'R')]].mean().mean()
     stats_filename = 'figures/STATS__PLOT_ABR_POWER_VS_LEVEL'
     with open(stats_filename, 'w') as fi:
         fi.write(stats_filename + '\n')
@@ -391,6 +400,11 @@ if PLOT_ABR_POWER_VS_LEVEL:
             'then mean over date within mouse.\n'
             'computed one threshold (interpolated) per mouse\n'
             )
+        fi.write(
+            f'thresh over mice: mean {thresh_by_mouse_mu:.1f}, '
+            f'std {thresh_by_mouse_std:.1f}, sem {thresh_by_mouse_sem:.2f}\n')
+        fi.write(f'thresh over channel: \n{thresh_by_channel} \n')
+        fi.write(f'thresh ipsi: {ipsi_thresh:.1f}; thresh contra: {contra_thresh:.1f}\n')
     
     # Echo
     with open(stats_filename) as fi:
@@ -400,6 +414,7 @@ if PLOT_ABR_POWER_VS_LEVEL:
     # my.plot.grouped_bar_plot(
     #   this_threshold_db.unstack('mouse'), index2plot_kwargs=lambda idx: 
     #   {'fc': 'b' if idx['speaker_side'] == 'L' else 'r'})
+
 
 if PLOT_ABR_POWER_VS_LEVEL_AFTER_HL:
     ## Plot sham and bilateral pre- and post-HL
@@ -584,6 +599,7 @@ if PLOT_ABR_POWER_VS_LEVEL_AFTER_HL:
         thresh_by_mouse_N = thresh_by_mouse.groupby('HL_type').size()
         thresh_by_mouse_diff = thresh_by_mouse.diff(axis=1).iloc[:, 1]
         thresh_by_mouse_diff_mu = thresh_by_mouse_diff.groupby('HL_type').mean()
+        thresh_by_mouse_diff_std = thresh_by_mouse_diff.groupby('HL_type').std()
         thresh_by_mouse_diff_err = thresh_by_mouse_diff.groupby('HL_type').sem()
         thresh_by_mouse_diff_N = thresh_by_mouse_diff.groupby('HL_type').size()
         
@@ -591,10 +607,12 @@ if PLOT_ABR_POWER_VS_LEVEL_AFTER_HL:
         stats_filename = f'figures/PLOT_ABR_POWER_VS_LEVEL_AFTER_HL__thresh__{speaker_side}'
         with open(stats_filename, 'w') as fi:
             fi.write(stats_filename + '\n')
+            fi.write(f'these calculations are all meaned over channel * speaker_side\n')
             fi.write(f'mean threshold:\n{thresh_by_mouse_mu}\n')
             fi.write(f'SEM threshold:\n{thresh_by_mouse_err}\n')
             fi.write(f'N threshold:\n{thresh_by_mouse_N}\n')
             fi.write(f'mean diff threshold:\n{thresh_by_mouse_diff_mu}\n')
+            fi.write(f'STD diff threshold:\n{thresh_by_mouse_diff_std}\n')
             fi.write(f'SEM diff threshold:\n{thresh_by_mouse_diff_err}\n')
             fi.write(f'N diff threshold:\n{thresh_by_mouse_diff_N}\n')
         
