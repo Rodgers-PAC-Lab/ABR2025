@@ -177,6 +177,35 @@ averaged_abrs_by_date = big_abrs.groupby(
 averaged_abrs_by_mouse = averaged_abrs_by_date.xs(0, level='n_experiment')
 
 
+## Dump overall N
+# Estimate duration as the last click time
+recording_duration = big_click_params.groupby(
+    ['date', 'mouse', 'recording']).apply(lambda df: df.index[-1][-1]
+    ) / 16e3
+n_recordings = len(recording_duration)
+n_experiments = len(recording_duration.groupby(['date', 'mouse']).sum())
+n_mice = len(recording_duration.groupby('mouse').sum())
+quantiles = recording_duration.quantile((0, .25, .5, .75, 1))
+
+# Get range of surgical experiment dates
+surgery_df = experiment_metadata.join(
+    mouse_metadata.set_index('mouse')['HL_date'], on='mouse')
+surgery_dates = (surgery_df['date'] - surgery_df['HL_date']).dropna().sort_values()
+surgery_dates = surgery_dates.value_counts().sort_index()
+
+# Print N
+stats_filename = 'figures/STATS__N_OVERALL'
+with open(stats_filename, 'w') as fi:
+    fi.write(stats_filename + '\n')
+    fi.write(f'n = {n_mice} mice; {n_recordings} recordings; {n_experiments} experiments\n')
+    fi.write(f'duration quantiles:\n{str(quantiles)}\n')
+    fi.write(f'surgery date range:\n{str(surgery_dates)}')
+
+# Echo
+with open(stats_filename) as fi:
+    print(''.join(fi.readlines()))
+
+
 ## Plots
 PLOT_SINGLE_TRIAL_ABR = True
 PLOT_TRIAL_AVERAGED_ABR = True
