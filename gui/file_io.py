@@ -9,7 +9,6 @@ import time
 import datetime
 import os
 import numpy as np
-import paclab.abr
 
 class FileWriter(object):
     """Writes data from deques to disk

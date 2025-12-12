@@ -30,20 +30,13 @@ over the entire experiment, even that which is no longer in memory.
 
 import datetime
 import scipy.signal
-import paclab.abr
 import numpy as np
 import pandas
 import matplotlib.mlab
 import PyQt5.QtWidgets
 import PyQt5.QtCore
 import pyqtgraph as pg
-
-# Temporary workaround
-# In the main branch, this was just paclab.abr
-# Now everything's been moved into a subfolder
-# In any case we need to remove all references to paclab.abr.abr and 
-# paclab.abr.abr_gui
-import paclab.abr.abr
+import ABR2025
 
 # TODO: move this to a shared location
 def psd(data, NFFT=None, Fs=None, detrend='mean', window=None, noverlap=None, 
