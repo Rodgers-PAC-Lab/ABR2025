@@ -2,18 +2,30 @@
 
 ## Introduction
 
-This repository contains all the scripts you need to reproduce the figures
-in Gargiullo et al. 
+This repository contains code to implement the ABR measuring system described
+in Gargiullo et al, as well as the analysis scripts needed to replicate the 
+figures in that paper.
+
+The repository is structured as follows:
+- `./` - The toplevel directory, containing this README file
+- `./gui` - A module for running the GUI to take ABR data. It can be imported
+like `import ABR2025.gui`. This code is run on a desktop PC connected to the 
+ABR measuring system.
+- `./scripts` - A folder of individual scripts that generate the figures in the
+paper. These scripts are meant to be run one at a time, not imported and called
+by other scripts. 
+- `./designs` - TODO: Put PCB files, BOM, and other information about physically
+building the system in here.
 
 ## Requirements
 
 Install the following dependencies into your environment:
 - conda install numpy
-- pip install ffmpeg-python
 
-TODO: Add version numbers
+TODO: Update the requirements and add version numbers
 
 Clone the following repositories in a location on your PYTHONPATH:
+TODO: Remove this dependency
 - git clone git@github.com:Rodgers-PAC-Lab/paclab.git
 
 ## Getting started
