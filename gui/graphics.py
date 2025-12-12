@@ -105,6 +105,48 @@ def psd(data, NFFT=None, Fs=None, detrend='mean', window=None, noverlap=None,
     # Return
     return Pxx, freqs
 
+
+## TODO: replace these with more up to date versions
+def find_extrema(flat_data, pk_threshold, wlen=None, diff_threshold = None, distance = 200, width = None,plateau_size=None):
+    if type(flat_data) == np.ndarray:
+        flat_data = pandas.Series(flat_data)
+    pos_peaks = scipy.signal.find_peaks(
+        flat_data,wlen = wlen,threshold=diff_threshold,
+        height=pk_threshold, distance=distance,
+        width=width, plateau_size=plateau_size)[0]
+    neg_peaks = scipy.signal.find_peaks(
+        -flat_data, wlen = wlen, threshold=diff_threshold,
+        height=pk_threshold, distance=distance,
+        width=width, plateau_size=plateau_size)[0]
+    return pos_peaks,neg_peaks
+
+def drop_refrac(arr, refrac):
+    """Drop all values in arr after a refrac from an earlier val"""
+    drop_mask = np.zeros_like(arr).astype(bool)
+    for idx, val in enumerate(arr):
+        drop_mask[(arr < val + refrac) & (arr > val)] = 1
+    return arr[~drop_mask]
+
+def get_single_onsets(audio_data,audio_threshold, abr_start_sample = -80, abr_stop_sample = 120,distance=200):
+    pos_peaks, neg_peaks = find_extrema(audio_data,audio_threshold,distance=distance)
+    # Concatenate pos and neg peaks,
+    #  then drop ringing/overshoot peaks during refractory period
+    onsets = np.sort(np.concatenate([pos_peaks, neg_peaks]))
+
+    # Debugging plot of audio and onsets
+    # onset_ys = get_peak_ys(onsets, audio_data)
+    # plt.plot(audio_data)
+    # plt.plot(onsets, onset_ys, "x")
+
+    onsets2 = drop_refrac(onsets, 750)
+    # Get rid of onsets that are too close to the start or end of the session.
+#    if onsets2[0] < 80: onsets2 = onsets2[1:]
+    onsets2 = onsets2[
+        (onsets2 > -abr_start_sample) &
+        (onsets2 < len(audio_data) - abr_stop_sample)
+        ]
+    return onsets2
+
 class OscilloscopeWidget(PyQt5.QtWidgets.QWidget):
     def __init__(self, 
         abr_device, 
@@ -910,7 +952,7 @@ class OscilloscopeWidget(PyQt5.QtWidgets.QWidget):
         audio_data_hp = scipy.signal.lfilter(ad_ahi, ad_bhi, speaker_channel)
 
         # Extract onsets
-        onsets = paclab.abr.abr.get_single_onsets(
+        onsets = get_single_onsets(
             audio_data_hp, 
             audio_threshold=10**self.amplitude_cuts[0],
             abr_start_sample=-40, 
@@ -1123,6 +1165,8 @@ class OscilloscopeWidget(PyQt5.QtWidgets.QWidget):
 
 
         ## Extract onsets and click params
+        # TODO: replace this with signal_processing.identify_click_times and
+        # signal_processing.categorize_clicks
         audio_data_hp, click_params = self.extract_audio_onsets(speaker_channel)
         
         # Drop onsets too close to the edges
