@@ -32,81 +32,16 @@ import datetime
 import scipy.signal
 import numpy as np
 import pandas
-import matplotlib.mlab
 import PyQt5.QtWidgets
 import PyQt5.QtCore
 import pyqtgraph as pg
 import ABR2025
-
-# TODO: move this to a shared location
-def psd(data, NFFT=None, Fs=None, detrend='mean', window=None, noverlap=None, 
-    scale_by_freq=None, **kwargs):
-    """Compute power spectral density.
-    
-    A wrapper around mlab.psd with more documentation and slightly different
-    defaults.
-    
-    Arguments
-    ---
-    data : The signal to analyze. Must be 1d
-    NFFT : defaults to 256 in mlab.psd
-    Fs : defaults to 2 in mlab.psd
-    detrend : default is 'mean', overriding default in mlab.psd
-    window : defaults to Hanning in mlab.psd
-    noverlap : defaults to 0 in mlab.psd
-        50% or 75% of NFFT is a good choice in data-limited situations
-    scale_by_freq : defaults to True in mlab.psd
-    **kwargs : passed to mlab.psd
-    
-    Notes on scale_by_freq
-    ---
-    Using scale_by_freq = False makes the sum of the PSD independent of NFFT
-    Using scale_by_freq = True makes the values of the PSD comparable for
-    different NFFT
-    In both cases, the result is independent of the length of the data
-    With scale_by_freq = False, ppxx.sum() is roughly comparable to 
-      the mean of the data squared (but about half as much, for some reason)
-    With scale_by_freq = True, the returned results are smaller by a factor
-      roughly equal to sample_rate, but not exactly, because the window 
-      correction is done differently
-    
-    With scale_by_freq = True
-      The sum of the PSD is proportional to NFFT/sample_rate
-      Multiplying the PSD by sample_rate/NFFT and then summing it
-        gives something that is roughly equal to np.mean(signal ** 2)
-      To sum up over a frequency range, could ignore NFFT and multiply
-        by something like bandwidth/sample_rate, but I am not sure.
-    With scale_by_freq = False
-      The sum of the PSD is independent of NFFT and sample_rate
-      The sum of the PSD is slightly more than np.mean(signal ** 2)
-      To sum up over a frequency range, need to account for the number of
-        points in that range, which depends on NFFT.
-    In both cases
-      The sum of the PSD is independent of the length of the signal
-    The reason that the answers are not proportional to each other
-    is because the window correction is done differently. 
-    
-    scale_by_freq = True generally seems to be more accurate
-    I imagine scale_by_freq = False might be better for quickly reading
-    off a value of a peak    
-    """
-    # Run PSD
-    Pxx, freqs = matplotlib.mlab.psd(
-        data,
-        NFFT=NFFT,
-        Fs=Fs,
-        detrend=detrend,
-        window=window,
-        noverlap=noverlap,
-        scale_by_freq=scale_by_freq,
-        **kwargs,
-        )
-
-    # Return
-    return Pxx, freqs
+import ABR2025.signal_processing
 
 
-## TODO: replace these with more up to date versions
+## Functions for identifying click times
+# TODO: replace these with their equivalents in signal_processing
+# See comment in `update` method
 def find_extrema(flat_data, pk_threshold, wlen=None, diff_threshold = None, distance = 200, width = None,plateau_size=None):
     if type(flat_data) == np.ndarray:
         flat_data = pandas.Series(flat_data)
@@ -147,6 +82,9 @@ def get_single_onsets(audio_data,audio_threshold, abr_start_sample = -80, abr_st
         ]
     return onsets2
 
+
+## Define OscilloscopeWidget
+# Huge widget that has everything in it other than the button controls
 class OscilloscopeWidget(PyQt5.QtWidgets.QWidget):
     def __init__(self, 
         abr_device, 
@@ -1147,7 +1085,7 @@ class OscilloscopeWidget(PyQt5.QtWidgets.QWidget):
             to_psd = col[-2**16:]
             
             # Data is in V
-            Pxx, freqs = psd(
+            Pxx, freqs = ABR2025.signal_processing.psd(
                 to_psd, 
                 NFFT=16384, 
                 Fs=self.abr_device.sampling_rate,
