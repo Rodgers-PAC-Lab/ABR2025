@@ -8,6 +8,7 @@
 
 import os
 import json
+import datetime
 import numpy as np
 import pandas
 import my.plot
@@ -37,18 +38,38 @@ sampling_rate = 16000
 neural_channel_numbers = [0, 2, 4]
 
 
+## Load metadata
+mouse_metadata = pandas.read_csv(
+    os.path.join(raw_data_directory, 'metadata', 'mouse_metadata.csv'))
+experiment_metadata = pandas.read_csv(
+    os.path.join(raw_data_directory, 'metadata', 'experiment_metadata.csv'))
+recording_metadata = pandas.read_csv(
+    os.path.join(raw_data_directory, 'metadata', 'recording_metadata.csv'))
+
+# Coerce
+recording_metadata['date'] = recording_metadata['date'].apply(
+    lambda x: datetime.datetime.strptime(x, '%Y-%m-%d').date())
+experiment_metadata['date'] = experiment_metadata['date'].apply(
+    lambda x: datetime.datetime.strptime(x, '%Y-%m-%d').date())
+mouse_metadata['DOB'] = mouse_metadata['DOB'].apply(
+    lambda x: datetime.datetime.strptime(x, '%Y-%m-%d').date())
+
+# Coerce: special case this one because it can be null
+mouse_metadata['HL_date'] = mouse_metadata['HL_date'].apply(
+    lambda x: None if pandas.isnull(x) else 
+    datetime.datetime.strptime(x, '%Y-%m-%d').date())
+
+# Index
+recording_metadata = recording_metadata.set_index(
+    ['date', 'mouse', 'recording']).sort_index()
+
+
 ## Load previous results
-# Load results of Step1
-mouse_metadata = pandas.read_pickle(
-    os.path.join(output_directory, 'mouse_metadata'))
-experiment_metadata = pandas.read_pickle(
-    os.path.join(output_directory, 'experiment_metadata'))
-recording_metadata = pandas.read_pickle(
-    os.path.join(output_directory, 'recording_metadata'))
 big_Pxx = pandas.read_pickle(
     os.path.join(output_directory, 'big_Pxx'))
 
-# Join sex and HL on big_Pxx
+
+## Join sex and HL on big_Pxx
 to_join = experiment_metadata[['after_HL', 'date', 'mouse', 'experimenter']].copy()
 to_join['experimenter'] = to_join['experimenter'].replace({'cedric': 'Cedric'})
 big_Pxx = my.misc.join_level_onto_index(
