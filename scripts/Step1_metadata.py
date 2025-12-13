@@ -1,6 +1,16 @@
-# This script goes through 'mouse_info.csv'
-# For each date and mouse, it gets the recording metadata for those recordings
-# and checks to make sure it can load the data files.
+## Takes metadata from google sheets and generates metadata for sharing
+# This scripts converts metadata from lab-specific format to a shareable
+# format. Ultimately this script will be removed from the repository because
+# it won't work outside the lab.
+#
+# Steps:
+# * Load google sheets for "mouse metadata" and "experiment metadata"
+# * Get the metadata from the surgery partition on cuttlefish for each of 
+#   those experiments, using the "notes_v6.csv" in those directories.
+# * Writes out mouse_metadata, experiment_metadata, and recording_metadata
+#   in a shareable CSV format that all other shared scripts will use.
+# * Writes out "files_from" to enable an rsync from cuttlefish to a folder
+#   of data to share.
 #
 # An "experiment" is a series of "recordings" on a single day from a single mouse
 # One mouse might be tested on multiple days, and these are different experiments
@@ -8,17 +18,29 @@
 # On disk, all data from the same day are combined into the same dated directory,
 # so experiments are mixed together. This script will split them apart.
 #
-# At the end of the script it creates these pickles:
-#   mouse_metadata : one row per mouse
-#   experiment_metadata : one row per experiment (mouse * date)
-#   recording_metadata: one row per recording, indexed by date * mouse * recording
+# At the end of the script it creates these CSV files:
+#   mouse_metadata.csv : one row per mouse
+#   experiment_metadata.csv : one row per experiment (mouse * date)
+#   recording_metadata.csv: one row per recording, indexed by date * mouse * recording
+#
+# Run this to generate the data to share. It copies the relevant files
+# from cuttlefish to a new location, which will ultimately be uploaded
+# (and then downloaded, serving as the input directory)
+"""
+rsync -van \
+    /home/chris/mnt/cuttlefish/surgery/abr_data \
+    /home/chris/mnt/cuttlefish/chris/data/20251122_abr_paper_data/input \
+    --files-from=/home/chris/mnt/cuttlefish/chris/data/20251122_abr_paper_data/input/metadata/files_from
 
+Replace paths where appropriate with 
+paths['original_cuttlefish_directory'] and paths['raw_data_directory']
+"""
 import os
 import datetime
 import json
 import numpy as np
 import pandas
-import paclab # remove this once metadata is hard-coded
+import paclab # okay to keep this import, since this script won't be shared
 import ABR2025
 import tqdm
 
@@ -29,11 +51,14 @@ with open('filepaths.json') as fi:
     paths = json.load(fi)
 
 # Parse into paths to raw data and output directory
+cuttlefish_directory = paths['original_cuttlefish_directory']
 raw_data_directory = paths['raw_data_directory']
 output_directory = paths['output_directory']
 
-# Create output_directory if it doesn't exist already (for example, 
-# if this is the first run)
+# Create raw_data_directory and output_directory if needed 
+# (for example, if this is the first run)
+if not os.path.exists(raw_data_directory):
+    os.mkdir(raw_data_directory)
 if not os.path.exists(output_directory):
     os.mkdir(output_directory)
 
@@ -151,7 +176,7 @@ for idx in tqdm.tqdm(experiment_metadata.index):
     # Form data_directory where both the notes csv and recording data are stored
     folder_datestr = datetime.datetime.strftime(experiment_date, '%Y-%m-%d')
     data_directory = os.path.join(
-        raw_data_directory, folder_datestr, experimenter)
+        cuttlefish_directory, folder_datestr, experimenter)
     
     # Load metadata for the day (hardcoding v6)
     this_date_metadata = ABR2025.loading.get_metadata(
@@ -172,9 +197,9 @@ for idx in tqdm.tqdm(experiment_metadata.index):
     # on user and filesystem
     this_date_metadata = this_date_metadata.drop('datafile', axis=1)
     
-    # Replace datafile with a relative path within raw_data_directory
+    # Replace datafile with a relative path within cuttlefish_directory
     def recording_name2short_datafile(recording_name):
-        """Turn bare recording name into a path within raw_data_directory.
+        """Turn bare recording name into a path within cuttlefish_directory.
         
         Join folder_datestr and experimenter before recording_name        
         """
@@ -224,14 +249,39 @@ experiment_metadata = experiment_metadata.sort_index().sort_index(axis=1)
 recording_metadata = recording_metadata.sort_index().sort_index(axis=1)
 
 
-## Store
-mouse_metadata.to_pickle(
-    os.path.join(output_directory, 'mouse_metadata'))
-experiment_metadata.to_pickle(
-    os.path.join(output_directory, 'experiment_metadata'))
-recording_metadata.to_pickle(
-    os.path.join(output_directory, 'recording_metadata'))
+## Store metadata
+# Drop the notes columns
+mouse_metadata = mouse_metadata.drop('notes', axis=1)
+experiment_metadata = experiment_metadata.drop('notes', axis=1)
+recording_metadata = recording_metadata.drop('notes', axis=1)
 
-# Output will go here
+# Drop redundant
+assert recording_metadata['include'].all()
+recording_metadata = recording_metadata.drop('include', axis=1)
+
+# Make a place for metadata
+make_dir = os.path.join(raw_data_directory, 'metadata')
+if not os.path.exists(make_dir):
+    os.mkdir(make_dir)
+
+# Write out as csv in the raw data directory
+# These will be shared alongside the raw data
+# recording_metadata is the only one with a useful index
+mouse_metadata.to_csv(
+    os.path.join(raw_data_directory, 'metadata', 'mouse_metadata.csv'),
+    index=False)
+experiment_metadata.to_csv(
+    os.path.join(raw_data_directory, 'metadata', 'experiment_metadata.csv'),
+    index=False)
+recording_metadata.to_csv(
+    os.path.join(raw_data_directory, 'metadata', 'recording_metadata.csv'))
+
+# Write out a files_from for rsync
+files_from_text = '\n'.join(
+    recording_metadata['short_datafile'].apply(lambda s: s + '/'))
+with open(os.path.join(raw_data_directory, 'metadata', 'files_from'), 'w') as fi:
+    fi.write(files_from_text + '\n')
+
+# Figure output will go here
 if not os.path.exists('figures'):
     os.mkdir('figures')
