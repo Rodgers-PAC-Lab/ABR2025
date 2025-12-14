@@ -29,11 +29,17 @@
 """
 rsync -van \
     /home/chris/mnt/cuttlefish/surgery/abr_data \
-    /home/chris/mnt/cuttlefish/chris/data/20251122_abr_paper_data/input \
-    --files-from=/home/chris/mnt/cuttlefish/chris/data/20251122_abr_paper_data/input/metadata/files_from
+    /home/chris/mnt/cuttlefish/chris/data/20251214_abr_data/ABR2025_data \
+    --files-from=/home/chris/mnt/cuttlefish/chris/data/20251214_abr_data/ABR2025_data/metadata/files_from
 
 Replace paths where appropriate with 
 paths['original_cuttlefish_directory'] and paths['raw_data_directory']
+
+I was getting CRC errors with zip
+zip -r ABR2025_data.zip ABR2025_data
+
+Try tar
+tar -cvzf ABR2025_data.tar.gz ABR2025_data
 """
 import os
 import datetime
@@ -41,6 +47,7 @@ import json
 import numpy as np
 import pandas
 import paclab # okay to keep this import, since this script won't be shared
+import paclab.abr_misc
 import ABR2025
 import tqdm
 
@@ -179,7 +186,7 @@ for idx in tqdm.tqdm(experiment_metadata.index):
         cuttlefish_directory, folder_datestr, experimenter)
     
     # Load metadata for the day (hardcoding v6)
-    this_date_metadata = ABR2025.loading.get_metadata(
+    this_date_metadata = paclab.abr_misc.get_metadata(
         data_directory, experiment_date.strftime('%y%m%d'), 'v6')
     
     # Check that we actually found data
