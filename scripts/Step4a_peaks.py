@@ -209,8 +209,8 @@ assert len(primary_peak) == len(new_index) * 6
 
 ## Plots
 STRIP_PLOT_PEAK_HEIGHT = True
-STRIP_PLOT_PEAK_LATENCY = False
-OVERPLOT_LOUDEST_WITH_PEAKS = False
+STRIP_PLOT_PEAK_LATENCY = True
+OVERPLOT_LOUDEST_WITH_PEAKS = True
 
 
 if STRIP_PLOT_PEAK_HEIGHT:
@@ -621,7 +621,7 @@ if OVERPLOT_LOUDEST_WITH_PEAKS:
     # Pretty
     ax.set_xlim((-1, 7))
     ax.set_ylim((-6, 6))
-    ax.set_xticks([0, 3, 6])
+    ax.set_xticks([0, 2, 4, 6])
     ax.set_yticks([])
     f.text(.51, .01, 'time from sound onset (ms)', ha='center', va='bottom')
     

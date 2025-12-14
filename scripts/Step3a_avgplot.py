@@ -243,7 +243,7 @@ if GRAND_AVG_ABR_PLOT:
         # Pretty
         ax.set_xlim((-1, 7))
         ax.set_ylim((-2.5, 2.5))
-        ax.set_xticks([0, 3, 6])
+        ax.set_xticks([0, 2, 4, 6])
         ax.set_yticks([])
         f.text(.51, .01, 'time (ms)', ha='center', va='bottom')
 
@@ -366,7 +366,7 @@ if GRAND_AVG_ABR_PLOT_PERI_HL:
         # Pretty
         ax.set_xlim((-1, 7))
         ax.set_ylim((-2.5, 2.5))
-        ax.set_xticks([0, 3, 6])
+        ax.set_xticks([0, 2, 4, 6])
         ax.set_yticks([])
         f.text(.51, .01, 'time (ms)', ha='center', va='bottom')
 
@@ -465,7 +465,7 @@ if GRAND_AVG_IMSHOW:
             
             # Pretty
             ax.set_yticks((30, 70))
-            ax.set_xticks((0, 3, 6))
+            ax.set_xticks((0, 2, 4, 6))
             ax.set_xlim((-1, 7))
         
         # Harmonize clim
@@ -568,7 +568,7 @@ if GRAND_AVG_IMSHOW_PERI_HL:
             
             # Pretty
             ax.set_yticks((30, 70))
-            ax.set_xticks((0, 3, 6))
+            ax.set_xticks((0, 2, 4, 6))
             ax.set_xlim((-1, 7))
         
         # Harmonize clim
