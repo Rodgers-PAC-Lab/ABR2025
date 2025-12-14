@@ -19,6 +19,10 @@ are meant to be run one at a time, not imported and called by other scripts.
 
 ## Requirements
 
+We used Python 3.10 for the GUI and Python 3.11 for the analysis scripts. It is
+likely that either will work. Newer versions may also work but we did not test
+them.
+
 The following Python modules are required to run the GUI or analysis scripts. 
 Other versions will likely work, but these are the ones we used. 
 
