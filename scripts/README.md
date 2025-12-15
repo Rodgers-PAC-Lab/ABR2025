@@ -10,7 +10,7 @@ Gargiullo 2025 paper.
 ### Downloading the data
 
 First, download the data that we collected using the ABR measuring system. The
-data can be downloaded from Zenodo at this link (TODO: add link)
+data can be downloaded from Zenodo at this link: https://doi.org/10.5281/zenodo.17933111
 
 Uncompress the downloaded file. On Linux you can do this using 
 `tar xvzf ABR2025_data.tar.gz`. On other operating systems, try 7-zip. 
