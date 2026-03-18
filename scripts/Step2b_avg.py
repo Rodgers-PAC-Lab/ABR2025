@@ -279,7 +279,7 @@ if PLOT_TRIAL_AVERAGED_ABR:
     # Always do the lowest labels last
     label_l = sorted(trial_averaged_abr.index, reverse=True)
     aut_colorbar = my.plot.generate_colorbar(
-        len(label_l), mapname='inferno_r', start=0.15, stop=1)[::-1]
+        len(label_l), mapname='inferno_r', start=0.15, stop=1)
 
     # Plot
     f, ax = plt.subplots(figsize=(3.75, 2.5))
