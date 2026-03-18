@@ -5,6 +5,7 @@
 This repository contains code to implement the ABR measuring system described
 in Gargiullo et al, as well as the analysis scripts needed to replicate the 
 figures in that paper.
+Preprint: https://www.biorxiv.org/content/10.64898/2025.12.17.694771v1
 
 The repository is structured as follows:
 - `./` - The toplevel directory, containing this README file
@@ -40,7 +41,7 @@ Other versions will likely work, but these are the ones we used.
 For the analysis scripts (but not the GUI), the following repository is 
 required. It should be on your PYTHONPATH so that it can be imported using
 the syntax `import my`.
-- git clone git@github.com:Rodgers-PAC-Lab/my.git
+- `git clone git@github.com:Rodgers-PAC-Lab/my.git`
 
 ## Instructions
 
