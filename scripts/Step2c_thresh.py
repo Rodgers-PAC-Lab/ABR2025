@@ -623,10 +623,12 @@ if PLOT_ABR_POWER_VS_LEVEL_AFTER_HL:
         thresh_by_mouse_diff_N = thresh_by_mouse_diff.groupby('HL_type').size()
         
         # Write out
+        # This is redundant over speaker_side
         stats_filename = f'figures/PLOT_ABR_POWER_VS_LEVEL_AFTER_HL__thresh__{speaker_side}'
         with open(stats_filename, 'w') as fi:
             fi.write(stats_filename + '\n')
             fi.write(f'these calculations are all meaned over channel * speaker_side\n')
+            fi.write(f'raw changes after_HL by mouse:\n{thresh_by_mouse.diff(axis=1).iloc[:, 1]}\n')
             fi.write(f'mean threshold:\n{thresh_by_mouse_mu}\n')
             fi.write(f'SEM threshold:\n{thresh_by_mouse_err}\n')
             fi.write(f'N threshold:\n{thresh_by_mouse_N}\n')
