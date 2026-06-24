@@ -121,12 +121,12 @@ f.subplots_adjust(left=.35, right=.85)
 # The three channels are similar, except LR has less ~1 Hz and more ~100 Hz
 #   (ie, LR cancels shared low-frequency noise and emphasizes ECG/ABR)
 # Also, LV is generally above RV
-for channel in ['LV', 'RV', 'LR']:
-    if channel == 'LV':
+for channel in ['VL', 'VR', 'RL']:
+    if channel == 'VL':
         color = 'b'
-    elif channel == 'RV':
+    elif channel == 'VR':
         color = 'r'
-    elif channel == 'LR':
+    elif channel == 'RL':
         color = 'k'
 
     line, = ax.plot(topl_mu.loc[channel], lw=1, label=channel, color=color)
@@ -166,9 +166,9 @@ ax.text(900, 23, 'ABR', ha='center', va='top')
 my.plot.despine(ax)
 
 # legend
-f.text(.9, .9, 'LV', ha='center', va='center', color='b')
-f.text(.9, .82, 'RV', ha='center', va='center', color='r')
-f.text(.9, .74, 'LR', ha='center', va='center', color='k')
+f.text(.9, .9, 'VL', ha='center', va='center', color='b')
+f.text(.9, .82, 'VR', ha='center', va='center', color='r')
+f.text(.9, .74, 'RL', ha='center', va='center', color='k')
 
 # Save figure
 f.savefig('figures/PSD_BY_CHANNEL.svg')

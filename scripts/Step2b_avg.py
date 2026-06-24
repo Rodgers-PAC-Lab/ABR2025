@@ -235,7 +235,7 @@ if PLOT_SINGLE_TRIAL_ABR:
     # This is an RV recording with speaker_side L
     single_trial_abr = big_triggered_neural2.loc[
         datetime.date(2025, 5, 20)].loc['Cat_229'].loc[10].xs(
-        'RV', level='channel').droplevel('speaker_side')
+        'VR', level='channel').droplevel('speaker_side')
 
     # Slice out loudest only
     single_trial_abr = single_trial_abr.xs(loudest_db, level='label')
@@ -269,7 +269,7 @@ if PLOT_TRIAL_AVERAGED_ABR:
         datetime.date(2025, 5, 20)].loc[
         'Cat_229'].loc[
         10].loc[
-        'RV'].loc[
+        'VR'].loc[
         'L']
 
     # Aggregate
@@ -326,7 +326,7 @@ if PLOT_POSITIVE_AND_NEGATIVE_CLICKS:
         datetime.date(2025, 5, 20)].loc[
         'Cat_229'].loc[
         10].loc[
-        'RV'].loc[
+        'VR'].loc[
         'L']
 
     # Slice out loudest only

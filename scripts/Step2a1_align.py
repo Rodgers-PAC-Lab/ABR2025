@@ -166,6 +166,14 @@ for date, mouse, recording in tqdm.tqdm(recording_metadata.index):
     assert neural_data_df.columns.isin(['LR', 'LV', 'RV']).all()
     neural_data_df = neural_data_df.sort_index(axis=1)
 
+    
+    ## Invert channels to make them ear-negative / vertex-positive
+    neural_data_df = -neural_data_df.rename(columns={
+        'LV': 'VL',
+        'RV': 'VR',
+        'LR': 'RL', # VL - VR, so positive primary peak for sound from left
+        })
+
 
     ## Bandpass heartbeat
     # Define heartbeat filter
@@ -191,6 +199,7 @@ for date, mouse, recording in tqdm.tqdm(recording_metadata.index):
     # The peak is always positive on LR and LV, and negative on RV
     # LV and RV are nearly opposites, so LR is about double
     # The central peak is maybe 5 ms wide and the whole thing is maybe 25 ms
+    # Because it's stored as RL, invert to form LR
     #
     # HEIGHT and PROMINENCE
     # The lowest SNR recording is Cat_229 on 2025-05-15, esp recording 1
@@ -212,7 +221,7 @@ for date, mouse, recording in tqdm.tqdm(recording_metadata.index):
     # So use a wide range of (10, 100) on width
     ekg_threshold = 35e-6 # V
     peak_times, peak_props = scipy.signal.find_peaks(
-        ekg_signal.loc[:, 'LR'], 
+        -ekg_signal.loc[:, 'RL'], # invert
         height=ekg_threshold, 
         distance=1000,
         prominence=ekg_threshold,
@@ -233,11 +242,8 @@ for date, mouse, recording in tqdm.tqdm(recording_metadata.index):
         ].reset_index(drop=True)
     heartbeats.index.name = 'beat'
 
-    # Right now this fails on ToyCar1 2025-7-7 rec 8 
-    # Bring this check back after we drop that session
-    #~ # Error check
-    #~ if len(heartbeats) < 10:
-        #~ 1/0
+    # Error check
+    assert len(heartbeats) >= 10:
     
     # Extract (n_trials, n_timepoints, 3)
     sliced_l = []

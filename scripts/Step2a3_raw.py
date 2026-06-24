@@ -182,6 +182,14 @@ neural_data_df = neural_data_df.rename(columns={
 neural_data_df.index = np.arange(len(neural_data_df)) / sampling_rate
 
 
+## Invert channels to make them ear-negative / vertex-positive
+neural_data_df = -neural_data_df.rename(columns={
+    'LV': 'VL',
+    'RV': 'VR',
+    'LR': 'RL', # VL - VR, so positive primary peak for sound from left
+    })
+
+
 ## Bandpass in the ABR band
 # ABR band params
 nyquist_freq = sampling_rate / 2
@@ -207,8 +215,8 @@ t_stop = 297.5
 ds_ratio = 10
 
 # Color and channel params
-channel_order = ['LV', 'RV', 'LR'][::-1]
-channel2color = {'LR': 'k', 'LV': 'b', 'RV': 'r'}
+channel_order = ['VL', 'VR', 'RL'][::-1]
+channel2color = {'RL': 'k', 'VL': 'b', 'VR': 'r'}
 
 
 ## Plot raw data on each channel in the first axis
@@ -272,12 +280,12 @@ axa[1].text(legend_xval, 25, f'30 {MU}V', ha='right', va='center', rotation=90)
 # Labels
 label_xval = t_start - .1
 axa[0].text(label_xval, 900, 'audio', color='k', ha='center', va='center')
-axa[0].text(label_xval, 600, 'LV', color='b', ha='center', va='center')
-axa[0].text(label_xval, 300, 'RV', color='r', ha='center', va='center')
-axa[0].text(label_xval, 0, 'LR', color='k', ha='center', va='center')
-axa[1].text(label_xval, 60, 'LV', color='b', ha='center', va='center')
-axa[1].text(label_xval, 30, 'RV', color='r', ha='center', va='center')
-axa[1].text(label_xval, 0, 'LR', color='k', ha='center', va='center')
+axa[0].text(label_xval, 600, 'VL', color='b', ha='center', va='center')
+axa[0].text(label_xval, 300, 'VR', color='r', ha='center', va='center')
+axa[0].text(label_xval, 0, 'RL', color='k', ha='center', va='center')
+axa[1].text(label_xval, 60, 'VL', color='b', ha='center', va='center')
+axa[1].text(label_xval, 30, 'VR', color='r', ha='center', va='center')
+axa[1].text(label_xval, 0, 'RL', color='k', ha='center', va='center')
 
 # Despine
 for ax in axa[:-1]:

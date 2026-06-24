@@ -180,10 +180,6 @@ if PLOT_ABR_RMS_OVER_TIME:
     agg_mean = to_agg.mean(axis=1).unstack('timepoint')
     agg_err = to_agg.sem(axis=1).unstack('timepoint')
 
-    # Plot
-    channel_l = ['LV', 'RV', 'LR']
-    speaker_side_l = ['L', 'R']
-
     # Set up colorbar
     # Always do the lowest labels last
     label_l = sorted(
@@ -193,7 +189,7 @@ if PLOT_ABR_RMS_OVER_TIME:
         len(label_l), mapname='inferno_r', start=0.15, stop=1)  
 
     # Set up ax_rows and ax_cols
-    channel_l = ['LV', 'RV', 'LR']
+    channel_l = ['VL', 'VR', 'RL']
     speaker_side_l = ['L', 'R']
     
     # Make plot
@@ -303,28 +299,8 @@ if PLOT_ABR_POWER_VS_LEVEL:
     this_big_abr_evoked_rms = big_abr_evoked_rms.xs(
         False, level='after_HL').droplevel('HL_type')
 
-    #~ ## TODO: analyze effect of speaker_side and channel on evoked response here
-    #~ # huge effect of label and mouse, of course
-    #~ # very strong effect of ipsi (contra is stronger)
-    #~ # strong effect of channel (LV is stronger)
-    #~ # mild effect of speaker_side (L is stronger)
-    #~ # However, the actual effect size of contra is pretty small (around the 
-    #~ # size of a 4 dB difference, and only about twice the size of the effect
-    #~ # of channel or speaker_side), so I don't know that it's worth
-    #~ # highlighting
-    #~ actual_data = np.log10(
-        #~ this_big_abr_evoked_rms.drop('LR', level='channel').iloc[:, ::40])
-    
-    #~ # prep for anova
-    #~ to_aov = actual_data.stack().rename('resp').reset_index()
-    #~ to_aov['ipsi'] = to_aov['speaker_side'] == to_aov['channel'].str[0]
-    
-    #~ # run anova
-    #~ my.stats.anova(
-        #~ to_aov, 'resp ~ mouse + label + channel + speaker_side + ipsi')
-    
     # Set up ax_rows and ax_cols
-    channel_l = ['LV', 'RV', 'LR']
+    channel_l = ['VL', 'VR', 'RL']
     speaker_side_l = ['L', 'R']
     
     # Make plot
@@ -407,9 +383,9 @@ if PLOT_ABR_POWER_VS_LEVEL:
     thresh_by_mouse_sem = thresh_by_mouse.sem()
     thresh_by_channel = this_threshold_db.groupby('channel').mean()
     ipsi_thresh = this_threshold_db.unstack('mouse').loc[
-        [('LV', 'L'), ('RV', 'R')]].mean().mean()
+        [('VL', 'L'), ('VR', 'R')]].mean().mean()
     contra_thresh = this_threshold_db.unstack('mouse').loc[
-        [('RV', 'L'), ('LV', 'R')]].mean().mean()
+        [('VR', 'L'), ('VL', 'R')]].mean().mean()
     stats_filename = 'figures/STATS__PLOT_ABR_POWER_VS_LEVEL'
     with open(stats_filename, 'w') as fi:
         fi.write(stats_filename + '\n')
@@ -428,11 +404,6 @@ if PLOT_ABR_POWER_VS_LEVEL:
     # Echo
     with open(stats_filename) as fi:
         print(''.join(fi.readlines()))
-        
-    # TODO: grouped bar plot on thresholds
-    # my.plot.grouped_bar_plot(
-    #   this_threshold_db.unstack('mouse'), index2plot_kwargs=lambda idx: 
-    #   {'fc': 'b' if idx['speaker_side'] == 'L' else 'r'})
 
 
 if PLOT_ABR_POWER_VS_LEVEL_AFTER_HL:
@@ -460,7 +431,7 @@ if PLOT_ABR_POWER_VS_LEVEL_AFTER_HL:
         
     
     ## To iterate over
-    channel_l = ['LV', 'RV', 'LR']
+    channel_l = ['VL', 'VR', 'RL']
     speaker_side_l = ['L', 'R']
     HL_type_l = ['bilateral', 'sham']
     after_HL_l = [False, True]
