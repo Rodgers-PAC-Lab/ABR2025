@@ -112,10 +112,10 @@ if PLOT_EKG_GRAND_MEAN:
     # Plot grand mean by channel
     f, ax = plt.subplots(figsize=(3.5, 2.5))
     f.subplots_adjust(bottom=.24, left=.25, right=.95, top=.89)
-    for channel in ['LV', 'RV', 'LR']:
-        if channel == 'LV':
+    for channel in ['VL', 'VR', 'RL']:
+        if channel == 'VL':
             color = 'b'
-        elif channel == 'RV':
+        elif channel == 'VR':
             color = 'r'
         else:
             color = 'k'
@@ -140,14 +140,14 @@ if PLOT_EKG_GRAND_MEAN:
     ax.set_ylabel(f'ECG ({MU}V)')
     ax.set_xlim((-15, 15))
     ax.set_xticks((-10, 0, 10))
-    ax.set_ylim((-75, 150))
-    ax.set_yticks((-75, 0, 75, 150))
+    ax.set_ylim((-150, 75))
+    ax.set_yticks((-150, -75, 0, 75))
     my.plot.despine(ax)
 
     # Legend
-    f.text(.85, .9, 'LV', color='b', ha='center', va='center')
-    f.text(.85, .82, 'RV', color='r', ha='center', va='center')
-    f.text(.85, .74, 'LR', color='k', ha='center', va='center')
+    f.text(.85, .9, 'VL', color='b', ha='center', va='center')
+    f.text(.85, .82, 'VR', color='r', ha='center', va='center')
+    f.text(.85, .74, 'RL', color='k', ha='center', va='center')
 
     # Savefig
     f.savefig('figures/PLOT_EKG_GRAND_MEAN.svg')
@@ -174,7 +174,7 @@ if PLOT_EKG_BY_MOUSE:
     f.subplots_adjust(bottom=.24, left=.25, right=.95, top=.89)
 
     # Slice LR
-    LR_mean = mean_by_mouse.loc[:, 'LR'].unstack('mouse')
+    LR_mean = mean_by_mouse.loc[:, 'RL'].unstack('mouse')
     
     # Slice temporally
     LR_mean = LR_mean.loc[-240:240].copy()
@@ -189,42 +189,17 @@ if PLOT_EKG_BY_MOUSE:
     ax.set_ylabel(f'ECG ({MU}V)')
     ax.set_xlim((-15, 15))
     ax.set_xticks((-10, 0, 10))
-    ax.set_ylim((-100, 200))
-    ax.set_yticks((-100, 0, 100, 200))
+    ax.set_ylim((-200, 100))
+    ax.set_yticks((-200, -100, 0, 100))
     my.plot.despine(ax)
 
     # Legend
-    f.text(.85, .9, 'LR', color='k', ha='center', va='center')
+    f.text(.85, .9, 'RL', color='k', ha='center', va='center')
     
     # Savefig
     f.savefig('figures/PLOT_EKG_BY_MOUSE.svg')
     f.savefig('figures/PLOT_EKG_BY_MOUSE.png', dpi=300)
 
-    #~ # LV
-    #~ f, ax = my.plot.figure_1x1_standard()
-    #~ LR_mean = mean_by_mouse.loc[:, 'LV'].unstack('mouse')
-
-    #~ ax.plot(
-        #~ LR_mean.index.values / sampling_rate * 1000,
-        #~ LR_mean * 1e6,
-        #~ color='k', alpha=.1, lw=1)
-    #~ ax.set_xlabel('time (ms)')
-    #~ ax.set_xlim((-15, 15))
-    #~ ax.set_ylabel('EKG (uV)')
-    #~ my.plot.despine(ax)
-
-    #~ # RV
-    #~ f, ax = my.plot.figure_1x1_standard()
-    #~ LR_mean = mean_by_mouse.loc[:, 'RV'].unstack('mouse')
-
-    #~ ax.plot(
-        #~ LR_mean.index.values / sampling_rate * 1000,
-        #~ LR_mean * 1e6,
-        #~ color='k', alpha=.1, lw=1)
-    #~ ax.set_xlabel('time (ms)')
-    #~ ax.set_xlim((-15, 15))
-    #~ ax.set_ylabel('EKG (uV)')
-    #~ my.plot.despine(ax)    
 
 if PLOT_EKG_STATS:
     # Histogram height, prominence, width, and IBI by session

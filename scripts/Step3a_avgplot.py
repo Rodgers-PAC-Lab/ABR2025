@@ -183,7 +183,7 @@ if GRAND_AVG_ABR_PLOT:
         
         ## Set up plot
         # Set up ax_rows and ax_cols
-        channel_l = ['LV', 'RV', 'LR']
+        channel_l = ['VL', 'VR', 'RL']
         speaker_side_l = ['L', 'R']
 
         # Set up colorbar
@@ -306,7 +306,7 @@ if GRAND_AVG_ABR_PLOT_PERI_HL:
         
         ## Set up plot
         # Set up ax_rows and ax_cols
-        channel_l = ['LV', 'RV', 'LR']
+        channel_l = ['VL', 'VR', 'RL']
         HL_type_l = ['bilateral', 'sham']
 
         # Set up colorbar
@@ -426,7 +426,7 @@ if GRAND_AVG_IMSHOW:
             ).mean()
         
         # Set up ax_rows and ax_cols
-        channel_l = ['LV', 'RV', 'LR']
+        channel_l = ['VL', 'VR', 'RL']
         speaker_side_l = ['L', 'R']
 
         # Make handles
@@ -529,7 +529,7 @@ if GRAND_AVG_IMSHOW_PERI_HL:
             ).mean()
         
         # Set up ax_rows and ax_cols
-        channel_l = ['LV', 'RV', 'LR']
+        channel_l = ['VL', 'VR', 'RL']
         HL_type_l = ['bilateral', 'sham']
 
         # Make handles
@@ -636,14 +636,14 @@ if GRAND_AVG_IPSI_VS_CONTRA:
     # solid=left speaker, dashed=right speaker
     this_t = loudest.columns / sampling_rate * 1000
     ax.plot(
-        this_t, loudest.loc['LV'].loc['L'], color='green', ls='-', lw=1)
+        this_t, loudest.loc['VL'].loc['L'], color='green', ls='-', lw=1)
     ax.plot(
-        this_t, loudest.loc['RV'].loc['R'], color='green', ls='--', lw=1)
+        this_t, loudest.loc['VR'].loc['R'], color='green', ls='--', lw=1)
     
     ax.plot(
-        this_t, loudest.loc['LV'].loc['R'], color='magenta', ls='--', lw=1)
+        this_t, loudest.loc['VL'].loc['R'], color='magenta', ls='--', lw=1)
     ax.plot(
-        this_t, loudest.loc['RV'].loc['L'], color='magenta', ls='-', lw=1)
+        this_t, loudest.loc['VR'].loc['L'], color='magenta', ls='-', lw=1)
     
     # Legend
     ax.text(6, 3, 'ipsi', color='green', ha='center', size=12)
@@ -651,7 +651,7 @@ if GRAND_AVG_IPSI_VS_CONTRA:
     
     # Pretty
     my.plot.despine(ax)
-    ax.set_title('LV and RV')
+    ax.set_title('VL and VR')
     ax.set_xlim(-1, 7)
     ax.set_xticks((0, 2, 4, 6))
     ax.set_ylim(-3, 3)
@@ -703,9 +703,9 @@ if False:
     # Iterate
     peak_res_l = []
     for mouse in this_averaged_abrs.index.get_level_values('mouse').unique():
-        for channel in ['LV', 'RV']:
+        for channel in ['VL', 'VR']:
             # Determine which is which
-            if channel == 'LV':
+            if channel == 'VL':
                 ipsi_speaker = 'L'
                 contra_speaker = 'R'
             else:
@@ -789,10 +789,10 @@ if GRAND_AVG_LR_LEFT_VS_RIGHT:
     # solid=left speaker, dashed=right speaker
     this_t = loudest.columns / sampling_rate * 1000
     ax.plot(
-        this_t, loudest.loc['LR'].loc['L'], color='k', ls='-', lw=1, label='left')
+        this_t, loudest.loc['RL'].loc['L'], color='k', ls='-', lw=1, label='left')
     ax.plot(
-        this_t, loudest.loc['LR'].loc['R'], color='k', ls='--', lw=1, label='right')
-    ax.set_title('LR')
+        this_t, loudest.loc['RL'].loc['R'], color='k', ls='--', lw=1, label='right')
+    ax.set_title('RL')
     
     # Legend
     ax.legend(loc='right', frameon=False, bbox_to_anchor=(1, 1), prop={'size': 12})
@@ -847,11 +847,11 @@ if GRAND_AVG_ONE_SIDE_ONLY:
     # solid=left speaker, dashed=right speaker
     this_t = loudest.columns / sampling_rate * 1000
     ax.plot(
-        this_t, loudest.loc['LV'].loc['R'], color='b', ls='-', lw=1, label='LV')
+        this_t, loudest.loc['VL'].loc['R'], color='b', ls='-', lw=1, label='VL')
     ax.plot(
-        this_t, loudest.loc['RV'].loc['R'], color='r', ls='-', lw=1, label='RV')
+        this_t, loudest.loc['VR'].loc['R'], color='r', ls='-', lw=1, label='VR')
     ax.plot(
-        this_t, loudest.loc['LR'].loc['R'], color='k', ls='-', lw=1, label='LR')
+        this_t, loudest.loc['RL'].loc['R'], color='k', ls='-', lw=1, label='RL')
     ax.set_title('sound from right')
     
     # Legend
