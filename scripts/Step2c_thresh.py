@@ -147,6 +147,7 @@ assert not threshold_db.isnull().any()
 
 ## Plots
 PLOT_ABR_RMS_OVER_TIME = True
+PLOT_GROWTH_FUNCTIONS = True
 PLOT_ABR_POWER_VS_LEVEL = True
 PLOT_ABR_POWER_VS_LEVEL_AFTER_HL = True
 BASELINE_VS_N_TRIALS = True
@@ -285,6 +286,131 @@ if PLOT_ABR_RMS_OVER_TIME:
     # Echo
     with open(stats_filename) as fi:
         print(''.join(fi.readlines()))
+
+
+if PLOT_GROWTH_FUNCTIONS:
+    ## Plot the smoothed rms of the ABR over time by condition
+    # Shared t
+    t = big_abrs.columns / sampling_rate * 1000
+
+    # Slice out pre-HL only
+    this_big_abr_stds = big_abr_stds.xs(
+        False, level='after_HL').droplevel('HL_type')
+
+    #~ # Slice out post-HL only
+    #~ this_big_abr_stds = big_abr_stds.xs(
+        #~ True, level='after_HL').xs(
+        #~ 'bilateral', level='HL_type')
+
+    # Aggregate over recordings
+    to_agg = this_big_abr_stds.groupby(
+        [lev for lev in this_big_abr_stds.index.names if lev != 'recording']
+        ).mean()
+
+    # Aggregate over date
+    # TODO: keep just the first session from each mouse instead?
+    to_agg = to_agg.groupby(
+        [lev for lev in to_agg.index.names if lev != 'n_experiment']
+        ).mean()
+
+    # Make mouse the replicates on the columns
+    to_agg = to_agg.stack().unstack('mouse')
+
+    # Agg
+    # TODO: log10 before agg?
+    agg_mean = to_agg.mean(axis=1).unstack('timepoint')
+    agg_err = to_agg.sem(axis=1).unstack('timepoint')
+
+    # Set up colorbar by time, rather than level
+    timepoint_l = sorted(agg_mean.columns)
+    aut_colorbar = my.plot.generate_colorbar(
+        len(timepoint_l), mapname='viridis_r', start=0, stop=1)  
+
+    # Set up ax_rows and ax_cols
+    channel_l = ['VL', 'VR', 'RL']
+    speaker_side_l = ['L', 'R']
+    
+    # Make plot
+    f, axa = plt.subplots(
+        len(channel_l), len(speaker_side_l),
+        sharex=True, sharey=True, figsize=(5, 4))
+    f.subplots_adjust(
+        left=.17, right=.89, top=.95, bottom=.15, hspace=.15, wspace=.12)
+
+    # Plot each channel * speaker_side
+    gobj = agg_mean.groupby(['channel', 'speaker_side'])
+    for (channel, speaker_side), subdf in gobj:
+        
+        # droplevel
+        subdf = subdf.droplevel(
+            ['channel', 'speaker_side'])
+    
+        # get the error bars
+        subdf_err = agg_err.loc[channel].loc[speaker_side]
+
+        # Get ax
+        ax = axa[
+            channel_l.index(channel),
+            speaker_side_l.index(speaker_side),
+        ]
+
+        # Plot each
+        for n_timepoint, timepoint in enumerate(subdf.columns[24:-8:16]):
+            # Get color
+            color = aut_colorbar[timepoint_l.index(timepoint)]
+
+            # Plot in uV
+            ax.plot(
+                subdf.index, 
+                subdf.loc[:, timepoint] * 1e6, 
+                color=color, 
+                lw=1)  
+            
+            # Error bars
+            ax.fill_between(
+                subdf.index,
+                (subdf.loc[:, timepoint] - subdf_err.loc[:, timepoint]) * 1e6,
+                (subdf.loc[:, timepoint] + subdf_err.loc[:, timepoint]) * 1e6,
+                color=color, alpha=.5, lw=0)
+
+        # Pretty
+        my.plot.despine(ax) 
+        ax.set_yscale('log')
+        ax.set_yticks((0.1, 1.0))
+
+        # Nicer log labels
+        ax.yaxis.set_major_formatter(matplotlib.ticker.ScalarFormatter())
+
+    # Legend
+    for n_label, (label, color) in enumerate(zip(timepoint_l[24:-8:16], aut_colorbar[24:-8:16])):
+        # Check we are correctly plotting once per ms
+        assert label // 16 == int(np.rint(label / 16))
+        
+        # Label
+        f.text(
+            .95, .68 - n_label * .04, f't = {label // 16} ms',
+            color=color, ha='center', va='center', size=12)
+
+    # Pretty
+    ax.set_xlim((20, 80))
+    ax.set_ylim((.05, 2))
+    ax.set_xticks([30, 50, 70])
+    f.text(.52, .01, 'sound level (dB SPL)', ha='center', va='bottom')
+    f.text(.02, .56, f'response strength ({MU}V rms)', rotation=90, ha='center', va='center')
+
+    # Label the channel
+    for n_channel, channel in enumerate(channel_l):
+        axa[n_channel, 0].set_ylabel(channel)
+    
+    # Label the speaker side
+    axa[0, 0].set_title('sound from left')
+    axa[0, 1].set_title('sound from right')
+
+
+    ## Savefig
+    f.savefig(os.path.join('figures', 'PLOT_GROWTH_FUNCTIONS.svg'))
+    f.savefig(os.path.join('figures', 'PLOT_GROWTH_FUNCTIONS.png'), dpi=300)
+    
 
 if PLOT_ABR_POWER_VS_LEVEL:
     ## Plot ABR rms power vs sound level for all mice together
