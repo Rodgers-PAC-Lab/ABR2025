@@ -41,6 +41,10 @@ with open('filepaths.json') as fi:
 raw_data_directory = paths['raw_data_directory']
 output_directory = paths['output_directory']
 
+# Create the output_directory if it doesn't already exist
+if not os.path.exists(output_directory):
+    os.mkdir(output_directory)
+    
 
 ## Load results of main1
 recording_metadata = pandas.read_csv(
