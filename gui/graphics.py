@@ -655,6 +655,11 @@ class OscilloscopeWidget(PyQt5.QtWidgets.QWidget):
         self.highpass_neural_plot_widget.setLabel('left', 'highpass signal (uV)')
         self.speaker_plot_widget.setLabel('left', 'speaker signal (mV)')
         
+        # Align the y-axis across plots
+        self.neural_plot_widget.getAxis('left').setWidth(60)
+        self.highpass_neural_plot_widget.getAxis('left').setWidth(60)
+        self.speaker_plot_widget.getAxis('left').setWidth(60)
+        
         # Set the xlabel
         self.neural_plot_widget.setLabel('bottom', 'time (sec)')
         self.speaker_plot_widget.setLabel('bottom', 'time (sec)')
