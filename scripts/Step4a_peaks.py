@@ -150,11 +150,11 @@ big_peak_df = pandas.concat(
     ).sort_index()
 
 
-## Invert the sign for the LR-R recordings, so that primary peak is always neg
-# Slice LR-R peaks
+## Invert the sign for the RL-R recordings, so that primary peak is always pos
+# Slice RL-R peaks
 to_invert = big_peak_df.loc[
     (big_peak_df.index.get_level_values('speaker_side') == 'R') &
-    (big_peak_df.index.get_level_values('channel') == 'LR')
+    (big_peak_df.index.get_level_values('channel') == 'RL')
     ].copy()
 
 # Slice the other peaks
@@ -180,23 +180,23 @@ primary_peak = big_peak_df_filtered.sort_values('height').groupby(
 print(primary_peak.drop('LR', level='channel').sort_values('t'))
 """
 
-# Drop any peak in LR after 2.6 ms, or in the other channels after 1.9 ms
+# Drop any peak in RL after 2.6 ms, or in the other channels after 1.9 ms
 drop_mask1 = (
-    (big_peak_df.index.get_level_values('channel') == 'LR') & 
+    (big_peak_df.index.get_level_values('channel') == 'RL') & 
     (big_peak_df['t'] > 2.6)
     )
 drop_mask2 = (
-    (big_peak_df.index.get_level_values('channel') != 'LR') & 
+    (big_peak_df.index.get_level_values('channel') != 'RL') & 
     (big_peak_df['t'] > 1.9)
     )
 big_peak_df_filtered = big_peak_df.loc[~drop_mask1 & ~drop_mask2]
 
 # Choose the primary peak
-# `first()` means we choose the most negative, which is more consistent
+# `last()` means we choose the most positive, which is more consistent
 # 'height' tends to be more consistent than 'prom'
 primary_peak = big_peak_df_filtered.sort_values('height').groupby(
     [lev for lev in big_peak_df.index.names if lev != 'n_pk']
-    ).first()
+    ).last()
 
 # Reindex to see if we dropped any mouse (e.g., no peak found)
 new_index = big_peak_df.groupby('mouse').size().index
@@ -231,7 +231,7 @@ if STRIP_PLOT_PEAK_HEIGHT:
         hue='speaker_side', 
         marker="$\circ$",
         alpha=0.5,
-        order=['LV', 'RV'],#, 'LR'],
+        order=['VL', 'VR'],
         hue_order=['L', 'R'], 
         ax=ax, 
         dodge=True, 
@@ -240,7 +240,7 @@ if STRIP_PLOT_PEAK_HEIGHT:
         )
 
     # Connect the pairs
-    for n_channel, channel in enumerate(['LV', 'RV']):#, 'LR']):
+    for n_channel, channel in enumerate(['VL', 'VR']):
         for mouse in primary_peak.index.levels[0]:
             lval = primary_peak[metric].loc[mouse].loc[channel].loc['L']
             rval = primary_peak[metric].loc[mouse].loc[channel].loc['R']
@@ -251,13 +251,13 @@ if STRIP_PLOT_PEAK_HEIGHT:
             ax.plot(xval, [lval, rval], '-', color='gray', alpha=.5, lw=.75)
 
     # Check nothing is outside the axis limits
-    assert (primary_peak[metric] > -8).all()
-    assert (primary_peak[metric] < 0).all()
+    assert (primary_peak[metric] < 8).all()
+    assert (primary_peak[metric] > 0).all()
 
     # Pretty
-    ax.set_ylim((0, -8))
-    ax.set_yticks((0, -4, -8))
-    ax.set_ylabel(f'{metric} of\nprimary peak ({MU}V)')
+    ax.set_ylim((0, 8))
+    ax.set_yticks((0, 4, 8))
+    ax.set_ylabel(f'{metric} of\wave 1 ({MU}V)')
     ax.set_xlabel('channel')
     my.plot.despine(ax)
 
@@ -283,13 +283,13 @@ if STRIP_PLOT_PEAK_HEIGHT:
     to_anova = primary_peak.reset_index()
     to_anova['ipsi'] = to_anova['channel'].str[0] == to_anova['speaker_side']
     aov_res = my.stats.anova(
-        to_anova[to_anova['channel'] != 'LR'], 
+        to_anova[to_anova['channel'] != 'RL'], 
         f'{metric} ~ channel + speaker_side + ipsi + mouse',
         )
     
     # Get post-hoc t-test for each
     pvalue_l = []
-    channel_l = ['LV', 'RV']#, 'LR']
+    channel_l = ['VL', 'VR']
     for channel in channel_l:
         # Slice channel
         to_compare = primary_peak[metric].xs(
@@ -304,7 +304,7 @@ if STRIP_PLOT_PEAK_HEIGHT:
     
     
     ## Plot stats
-    for n_channel, channel in enumerate(['LV', 'RV']):#, 'LR']):
+    for n_channel, channel in enumerate(['VL', 'VR']):
         # Plot a line
         xval = [
             n_channel - .2,
@@ -346,8 +346,8 @@ if STRIP_PLOT_PEAK_HEIGHT:
             aov_res['pvals']['p_speaker_side'],
             ))
         fi.write(
-            'LV pref: {:.2g} uV; p={:.2g}\n'.format(
-            -aov_res['fit']['fit_channel[T.RV]'], # invert T.RV term
+            'VL pref: {:.2g} uV; p={:.2g}\n'.format(
+            -aov_res['fit']['fit_channel[T.VR]'], # invert T.VR term
             aov_res['pvals']['p_channel'],
             ))
         fi.write('intercept: {:.2g} uV\n'.format(aov_res['fit']['fit_Intercept']))
@@ -361,39 +361,6 @@ if STRIP_PLOT_PEAK_HEIGHT:
     savename = 'figures/STRIP_PLOT_PEAK_HEIGHT'
     f.savefig(savename + '.svg')
     f.savefig(savename + '.png', dpi=300)
-
-#~ if STRIP_PLOT_PEAK_HEIGHT2:
-    #~ ## Plot distribution of primary peak heights
-    
-    #~ # Create figure handles
-    #~ f, ax = my.plot.figure_1x1_standard()
-    
-    #~ # Slice data
-    #~ data = primary_peak['height'].reset_index()
-    
-    #~ # Drop LR, for which ipsi/contra cannot be defined
-    #~ data = data[data['channel'] != 'LR']
-    
-    #~ # Indicate ipsi/contra
-    #~ data['ipsi'] = data['channel'].str[0] == data['speaker_side']
-
-    #~ # Reindex
-    #~ data = data.set_index(['channel', 'speaker_side', 'ipsi', 'mouse'])['height'].sort_index()
-    
-    
-    #~ ## Compute each marginal
-    #~ # Slice by channel and average within mouse
-    #~ by_channel_LV = data.xs('LV', level='channel').groupby('mouse').mean()
-    #~ by_channel_RV = data.xs('RV', level='channel').groupby('mouse').mean()
-    #~ by_channel_diff = by_channel_RV - by_channel_LV
-
-    #~ by_speaker_side_L = data.xs('L', level='speaker_side').groupby('mouse').mean()
-    #~ by_speaker_side_R = data.xs('R', level='speaker_side').groupby('mouse').mean()
-    #~ by_speaker_side_diff = by_speaker_side_R - by_speaker_side_L
-
-    #~ by_ipsi_True = data.xs(True, level='ipsi').droplevel('speaker_side')
-    #~ by_ipsi_False = data.xs(False, level='ipsi').droplevel('speaker_side')
-    #~ by_ipsi_diff = by_ipsi_True - by_ipsi_False
 
     
 if STRIP_PLOT_PEAK_LATENCY:
@@ -414,7 +381,7 @@ if STRIP_PLOT_PEAK_LATENCY:
         hue='speaker_side', 
         marker="$\circ$",
         alpha=0.5,
-        order=['LV', 'RV', 'LR'],
+        order=['VL', 'VR', 'RL'],
         hue_order=['L', 'R'], 
         ax=ax, 
         dodge=True, 
@@ -423,7 +390,7 @@ if STRIP_PLOT_PEAK_LATENCY:
         )
 
     # Connect the pairs
-    for n_channel, channel in enumerate(['LV', 'RV', 'LR']):
+    for n_channel, channel in enumerate(['VL', 'VR', 'RL']):
         for mouse in primary_peak.index.levels[0]:
             lval = primary_peak[metric].loc[mouse].loc[channel].loc['L']
             rval = primary_peak[metric].loc[mouse].loc[channel].loc['R']
@@ -436,7 +403,7 @@ if STRIP_PLOT_PEAK_LATENCY:
     # Pretty
     ax.set_ylim((0, 3))
     ax.set_yticks((0, 1, 2, 3))
-    ax.set_ylabel('latency to\nprimary peak (ms)')
+    ax.set_ylabel('latency to\nwave 1 (ms)')
     ax.set_xlabel('channel')
     my.plot.despine(ax)
 
@@ -457,13 +424,13 @@ if STRIP_PLOT_PEAK_LATENCY:
     to_anova = primary_peak.reset_index()
     to_anova['ipsi'] = to_anova['channel'].str[0] == to_anova['speaker_side']
     aov_res = my.stats.anova(
-        to_anova[to_anova['channel'] != 'LR'], 
+        to_anova[to_anova['channel'] != 'RL'], 
         f'{metric} ~ channel + speaker_side + ipsi + mouse',
         )
     
     # Get post-hoc t-test for each
     pvalue_l = []
-    channel_l = ['LV', 'RV', 'LR']
+    channel_l = ['VL', 'VR', 'RL']
     for channel in channel_l:
         # Slice channel
         to_compare = primary_peak[metric].xs(
@@ -478,7 +445,7 @@ if STRIP_PLOT_PEAK_LATENCY:
     
     
     ## Plot stats
-    for n_channel, channel in enumerate(['LV', 'RV', 'LR']):
+    for n_channel, channel in enumerate(['VL', 'VR', 'RL']):
         # Plot a line
         xval = [
             n_channel - .2,
@@ -498,12 +465,12 @@ if STRIP_PLOT_PEAK_LATENCY:
     err = primary_peak[metric].groupby(['channel', 'speaker_side']).sem().unstack()
     
     # Simple mean by ipsi and contra
-    mu_ipsi = (mu.loc[('LV', 'L')] + mu.loc[('RV', 'R')]) / 2
-    mu_contra = (mu.loc[('LV', 'R')] + mu.loc[('RV', 'L')]) / 2
+    mu_ipsi = (mu.loc[('VL', 'L')] + mu.loc[('VR', 'R')]) / 2
+    mu_contra = (mu.loc[('VL', 'R')] + mu.loc[('VR', 'L')]) / 2
     
     # Aggregate vertex-ear by mouse over channel * speaker_side
     by_mouse = primary_peak[metric].drop(
-        'LR', level='channel').groupby('mouse').mean()
+        'RL', level='channel').groupby('mouse').mean()
     mu2 = by_mouse.mean()
     err2 = by_mouse.sem()
     
@@ -536,7 +503,7 @@ if OVERPLOT_LOUDEST_WITH_PEAKS:
     ## Plot the ABR to the loudest level, with peaks labeled
     
     # Make figure handles. Channels in columns and speaker side on rows
-    channel_l = ['LV', 'RV']#, 'LR']
+    channel_l = ['VL', 'VR']
     speaker_side_l = ['L', 'R']
     f, axa = plt.subplots(
         len(channel_l), 
@@ -575,10 +542,10 @@ if OVERPLOT_LOUDEST_WITH_PEAKS:
             'mew': 0,
             'alpha': .5,
             }
-        pos_color = 'g'
-        neg_color = 'magenta'
+        pos_color = 'magenta'
+        neg_color = 'green'
         
-        if channel == 'LR' and speaker_side == 'R':
+        if channel == 'RL' and speaker_side == 'R':
             # The peaks are flipped for this one!
             # Plot the positive peaks
             ax.plot(
@@ -616,7 +583,7 @@ if OVERPLOT_LOUDEST_WITH_PEAKS:
 
     # Legend the primary peak pink point
     axa[0, 0].plot([-2], [4], color='magenta', clip_on=False, **peak_kwargs)
-    axa[0, 0].text(-1.75, 4, 'primary peak', ha='left', va='center', size=12)
+    axa[0, 0].text(-1.75, 4, 'wave 1', ha='left', va='center', size=12)
 
     # Pretty
     ax.set_xlim((-1, 7))
