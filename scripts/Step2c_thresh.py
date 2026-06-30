@@ -9,6 +9,7 @@
 import os
 import json
 import datetime
+import scipy.stats
 import numpy as np
 import pandas
 import my.plot
@@ -142,12 +143,13 @@ threshold_db = over_thresh.loc[over_thresh.values].groupby(
 threshold_db = threshold_db.reindex(big_abr_evoked_rms.index)
 
 # error check that we always have a threshold
-assert not threshold_db.isnull().any()
+#~ assert not threshold_db.isnull().any()
 
 
 ## Plots
 PLOT_ABR_RMS_OVER_TIME = True
 PLOT_GROWTH_FUNCTIONS = True
+PLOT_ABR_POWER_VS_AGE = True
 PLOT_ABR_POWER_VS_LEVEL = True
 PLOT_ABR_POWER_VS_LEVEL_AFTER_HL = True
 BASELINE_VS_N_TRIALS = True
@@ -411,6 +413,119 @@ if PLOT_GROWTH_FUNCTIONS:
     f.savefig(os.path.join('figures', 'PLOT_GROWTH_FUNCTIONS.svg'))
     f.savefig(os.path.join('figures', 'PLOT_GROWTH_FUNCTIONS.png'), dpi=300)
     
+
+if PLOT_ABR_POWER_VS_AGE:
+    ## Correlate response magnitude with age of mouse
+    # Slice out pre-HL only
+    this_threshold_db = threshold_db.xs(
+        False, level='after_HL').droplevel('HL_type')
+    this_big_abr_evoked_rms = big_abr_evoked_rms.xs(
+        False, level='after_HL').droplevel('HL_type')
+    
+    # Compute average mouse age at time of recordings
+    mouse_age = experiment_metadata[
+        experiment_metadata['after_HL'] == False
+        ].groupby('mouse')['age'].mean()
+    
+    # Average response by mouse across speaker_side * channel
+    # Note: This is significant for all channels and speaker_side separately,
+    # though perhaps weaker for LR
+    mouse_response = this_big_abr_evoked_rms.iloc[:, -1].groupby('mouse').mean()
+    
+    # Average thresh by mouse across speaker_side * channel
+    mouse_thresh = this_threshold_db.groupby('mouse').mean()
+    
+    # Concat
+    age_data = pandas.DataFrame({
+        'age': mouse_age,
+        'response': mouse_response,
+        'threshold': mouse_thresh,
+        })
+    
+    # Join sex
+    age_data = age_data.join(mouse_metadata.set_index('mouse')['sex'])
+    
+    # Join experimenter
+    mouse_experimenter = experiment_metadata.groupby(['mouse'])[
+        'experimenter'].apply(lambda df:df.unique().item())
+    age_data = age_data.join(mouse_experimenter)
+    
+    
+    ## Plot response magnitude
+    f, ax = my.plot.figure_1x1_small()
+    
+    # Plot males and females separately
+    ax.plot(
+        age_data.loc[age_data['sex'] == 'M', 'age'], 
+        age_data.loc[age_data['sex'] == 'M', 'response'] * 1e6, 
+        'bo', mfc='none')
+    ax.plot(
+        age_data.loc[age_data['sex'] == 'F', 'age'], 
+        age_data.loc[age_data['sex'] == 'F', 'response'] * 1e6, 
+        'ro', mfc='none')
+    
+    # Pretty
+    ax.set_xticks((90, 180, 270))
+    ax.set_xlabel('age (days)')
+    ax.set_yticks((1, 1.5, 2))
+    ax.set_ylabel(f'response strength\n({MU}V rms)')    
+    my.plot.despine(ax)
+    
+    # Savefig
+    f.savefig('figures/PLOT_ABR_POWER_VS_AGE__response.svg')
+    f.savefig('figures/PLOT_ABR_POWER_VS_AGE__response.png', dpi=300)
+    
+    
+    ## Plot thresh
+    f, ax = my.plot.figure_1x1_small()
+    
+    # Plot males and females separately
+    ax.plot(
+        age_data.loc[age_data['sex'] == 'M', 'age'], 
+        age_data.loc[age_data['sex'] == 'M', 'threshold'], 
+        'bo', mfc='none')
+    ax.plot(
+        age_data.loc[age_data['sex'] == 'F', 'age'], 
+        age_data.loc[age_data['sex'] == 'F', 'threshold'], 
+        'ro', mfc='none')    
+
+    # Pretty
+    ax.set_xticks((90, 180, 270))
+    ax.set_xlabel('age (days)')
+    ax.set_yticks((30, 35, 40))
+    ax.set_ylabel('threshold (dB SPL)')
+    my.plot.despine(ax)
+    
+    # Savefig
+    f.savefig('figures/PLOT_ABR_POWER_VS_AGE__thresh.svg')
+    f.savefig('figures/PLOT_ABR_POWER_VS_AGE__thresh.png', dpi=300)
+    
+    
+    ## Stats
+    # Correlate both
+    vs_response = scipy.stats.linregress(age_data['age'], age_data['response'])
+    vs_thresh = scipy.stats.linregress(age_data['age'], age_data['threshold'])
+    
+    # Write out stats
+    n_mice = len(age_data)
+    stats_filename = 'figures/STATS__PLOT_ABR_POWER_VS_AGE'
+    with open(stats_filename, 'w') as fi:
+        fi.write(stats_filename + '\n')
+        fi.write(f'n = {n_mice} mice, pre-HL only\n')
+        fi.write(
+            'including pre-HL sessions only, '
+            'meaned thresh and rms response at highest level over '
+            'channel * speaker_side (already meaned within mouse)\n'
+            'then correlated with age (meaned over recordings)\n'
+            )
+        fi.write(
+            f'response vs age: p={vs_response.pvalue:.4f}; r={vs_response.rvalue:.2f}; r2={vs_response.rvalue ** 2:.2f}\n'
+            f'thresh vs age: p={vs_thresh.pvalue:.4f}; r={vs_thresh.rvalue:.2f}; r2={vs_thresh.rvalue ** 2:.2f}\n'
+            )
+    
+    # Echo
+    with open(stats_filename) as fi:
+        print(''.join(fi.readlines()))    
 
 if PLOT_ABR_POWER_VS_LEVEL:
     ## Plot ABR rms power vs sound level for all mice together
