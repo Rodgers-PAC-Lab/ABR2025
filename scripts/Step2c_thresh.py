@@ -111,6 +111,21 @@ big_abr_evoked_rms = big_abr_evoked_rms.groupby(
     ).mean()
 
 
+## Do the same for the late response
+big_abr_evoked_rms_late = big_abr_stds.loc[:, 96].unstack('label')
+
+# Aggregate over recordings within a date
+big_abr_evoked_rms_late = big_abr_evoked_rms_late.groupby(
+    [lev for lev in big_abr_evoked_rms_late.index.names if lev != 'recording'],
+    ).mean()
+
+# Aggregate over dates within a mouse * after_HL
+# TODO: consider just taking the first date instead
+big_abr_evoked_rms_late = big_abr_evoked_rms_late.groupby(
+    [lev for lev in big_abr_evoked_rms_late.index.names if lev != 'n_experiment'],
+    ).mean()
+
+
 ## Calculate the threshold
 # Keep a copy before interpolating
 big_abr_evoked_rms_orig = big_abr_evoked_rms.copy()
@@ -147,11 +162,15 @@ threshold_db = threshold_db.reindex(big_abr_evoked_rms.index)
 
 
 ## Plots
+NORMALIZE_TO_WAVE1 = False
+WHICH_MICE = 'pre_HL'
+
 PLOT_ABR_RMS_OVER_TIME = True
 PLOT_GROWTH_FUNCTIONS = True
 PLOT_ABR_POWER_VS_AGE = True
 PLOT_ABR_POWER_VS_LEVEL = True
 PLOT_ABR_POWER_VS_LEVEL_AFTER_HL = True
+PLOT_ABR_POWER_VS_LEVEL_EARLY_VS_LATE_AFTER_HL = True
 BASELINE_VS_N_TRIALS = True
 HISTOGRAM_EVOKED_RMS_BY_LEVEL = True
 
@@ -160,10 +179,27 @@ if PLOT_ABR_RMS_OVER_TIME:
     # Shared t
     t = big_abrs.columns / sampling_rate * 1000
 
-    # Slice out pre-HL only
-    this_big_abr_stds = big_abr_stds.xs(
-        False, level='after_HL').droplevel('HL_type')
+    ## Select mice
+    if WHICH_MICE == 'pre_HL':
+        # Slice out pre-HL only
+        this_big_abr_stds = big_abr_stds.xs(
+            False, level='after_HL').droplevel('HL_type')
 
+    elif WHICH_MICE == 'bilateral':
+        # Slice out post-HL only
+        this_big_abr_stds = big_abr_stds.xs(
+            True, level='after_HL').xs(
+            'bilateral', level='HL_type')
+
+    elif WHICH_MICE == 'sham':
+        # Slice out post-HL only
+        this_big_abr_stds = big_abr_stds.xs(
+            True, level='after_HL').xs(
+            'sham', level='HL_type')
+    
+    else:
+        1/0
+    
     # Aggregate over recordings
     to_agg = this_big_abr_stds.groupby(
         [lev for lev in this_big_abr_stds.index.names if lev != 'recording']
@@ -178,11 +214,15 @@ if PLOT_ABR_RMS_OVER_TIME:
     # Make mouse the replicates on the columns
     to_agg = to_agg.stack().unstack('mouse')
 
+    # Normalize to wave 1
+    if NORMALIZE_TO_WAVE1:
+        to_agg = to_agg.divide(to_agg.xs(32, level='timepoint'))
+
     # Agg
     # TODO: log10 before agg?
     agg_mean = to_agg.mean(axis=1).unstack('timepoint')
     agg_err = to_agg.sem(axis=1).unstack('timepoint')
-
+    
     # Set up colorbar
     # Always do the lowest labels last
     label_l = sorted(
@@ -227,14 +267,25 @@ if PLOT_ABR_RMS_OVER_TIME:
             # Get color
             color = aut_colorbar[label_l.index(level)]
 
-            # Plot in uV
-            ax.plot(t, subdf.loc[level] * 1e6, color=color, lw=1)  
-            
-            # Error bars
-            ax.fill_between(t, 
-                (subdf.loc[level] - subdf_err.loc[level]) * 1e6,
-                (subdf.loc[level] + subdf_err.loc[level]) * 1e6,
-                color=color, alpha=.5, lw=0)
+            if NORMALIZE_TO_WAVE1:
+                # Plot the mean (as a ratio to wave 1)
+                ax.plot(t, subdf.loc[level], color=color, lw=1)  
+
+                # Error bars
+                ax.fill_between(t, 
+                    (subdf.loc[level] - subdf_err.loc[level]),
+                    (subdf.loc[level] + subdf_err.loc[level]),
+                    color=color, alpha=.5, lw=0)
+
+            else:
+                # Plot the mean (in uV)
+                ax.plot(t, subdf.loc[level] * 1e6, color=color, lw=1)  
+
+                # Error bars
+                ax.fill_between(t, 
+                    (subdf.loc[level] - subdf_err.loc[level]) * 1e6,
+                    (subdf.loc[level] + subdf_err.loc[level]) * 1e6,
+                    color=color, alpha=.5, lw=0)
 
         # Pretty
         my.plot.despine(ax) 
@@ -266,12 +317,14 @@ if PLOT_ABR_RMS_OVER_TIME:
     # Label the speaker side
     axa[0, 0].set_title('sound from left')
     axa[0, 1].set_title('sound from right')
-    
+
     
     ## Savefig
-    f.savefig(os.path.join('figures', 'PLOT_ABR_RMS_OVER_TIME.svg'))
-    f.savefig(os.path.join('figures', 'PLOT_ABR_RMS_OVER_TIME.png'), dpi=300)
-    
+    f.savefig(os.path.join('figures', 
+        f"PLOT_ABR_RMS_OVER_TIME__{'norm' if NORMALIZE_TO_WAVE1 else 'raw'}__{WHICH_MICE}.svg"))
+    f.savefig(os.path.join('figures', 
+        f"PLOT_ABR_RMS_OVER_TIME__{'norm' if NORMALIZE_TO_WAVE1 else 'raw'}__{WHICH_MICE}.png"), dpi=300)
+
     
     ## Stats
     stats_filename = 'figures/STATS__PLOT_ABR_RMS_OVER_TIME'
@@ -295,15 +348,28 @@ if PLOT_GROWTH_FUNCTIONS:
     # Shared t
     t = big_abrs.columns / sampling_rate * 1000
 
-    # Slice out pre-HL only
-    this_big_abr_stds = big_abr_stds.xs(
-        False, level='after_HL').droplevel('HL_type')
 
-    #~ # Slice out post-HL only
-    #~ this_big_abr_stds = big_abr_stds.xs(
-        #~ True, level='after_HL').xs(
-        #~ 'bilateral', level='HL_type')
+    ## Select mice
+    if WHICH_MICE == 'pre_HL':
+        # Slice out pre-HL only
+        this_big_abr_stds = big_abr_stds.xs(
+            False, level='after_HL').droplevel('HL_type')
 
+    elif WHICH_MICE == 'bilateral':
+        # Slice out post-HL only
+        this_big_abr_stds = big_abr_stds.xs(
+            True, level='after_HL').xs(
+            'bilateral', level='HL_type')
+
+    elif WHICH_MICE == 'sham':
+        # Slice out post-HL only
+        this_big_abr_stds = big_abr_stds.xs(
+            True, level='after_HL').xs(
+            'sham', level='HL_type')
+    
+    else:
+        1/0
+        
     # Aggregate over recordings
     to_agg = this_big_abr_stds.groupby(
         [lev for lev in this_big_abr_stds.index.names if lev != 'recording']
@@ -317,6 +383,10 @@ if PLOT_GROWTH_FUNCTIONS:
 
     # Make mouse the replicates on the columns
     to_agg = to_agg.stack().unstack('mouse')
+
+    # Normalize to wave 1
+    if NORMALIZE_TO_WAVE1:
+        to_agg = to_agg.divide(to_agg.xs(32, level='timepoint'))
 
     # Agg
     # TODO: log10 before agg?
@@ -361,19 +431,36 @@ if PLOT_GROWTH_FUNCTIONS:
             # Get color
             color = aut_colorbar[timepoint_l.index(timepoint)]
 
-            # Plot in uV
-            ax.plot(
-                subdf.index, 
-                subdf.loc[:, timepoint] * 1e6, 
-                color=color, 
-                lw=1)  
-            
-            # Error bars
-            ax.fill_between(
-                subdf.index,
-                (subdf.loc[:, timepoint] - subdf_err.loc[:, timepoint]) * 1e6,
-                (subdf.loc[:, timepoint] + subdf_err.loc[:, timepoint]) * 1e6,
-                color=color, alpha=.5, lw=0)
+
+            if NORMALIZE_TO_WAVE1:
+                # Plot the mean (as a ratio to wave 1)
+                ax.plot(
+                    subdf.index, 
+                    subdf.loc[:, timepoint],
+                    color=color, 
+                    lw=1)  
+                
+                # Error bars
+                ax.fill_between(
+                    subdf.index,
+                    (subdf.loc[:, timepoint] - subdf_err.loc[:, timepoint]),
+                    (subdf.loc[:, timepoint] + subdf_err.loc[:, timepoint]),
+                    color=color, alpha=.5, lw=0)
+
+            else:
+                # Plot the mean (in uV)
+                ax.plot(
+                    subdf.index, 
+                    subdf.loc[:, timepoint] * 1e6, 
+                    color=color, 
+                    lw=1)  
+                
+                # Error bars
+                ax.fill_between(
+                    subdf.index,
+                    (subdf.loc[:, timepoint] - subdf_err.loc[:, timepoint]) * 1e6,
+                    (subdf.loc[:, timepoint] + subdf_err.loc[:, timepoint]) * 1e6,
+                    color=color, alpha=.5, lw=0)
 
         # Pretty
         my.plot.despine(ax) 
@@ -410,9 +497,11 @@ if PLOT_GROWTH_FUNCTIONS:
 
 
     ## Savefig
-    f.savefig(os.path.join('figures', 'PLOT_GROWTH_FUNCTIONS.svg'))
-    f.savefig(os.path.join('figures', 'PLOT_GROWTH_FUNCTIONS.png'), dpi=300)
-    
+    f.savefig(os.path.join('figures', 
+        f"PLOT_GROWTH_FUNCTIONS__{'norm' if NORMALIZE_TO_WAVE1 else 'raw'}__{WHICH_MICE}.svg"))
+    f.savefig(os.path.join('figures', 
+        f"PLOT_GROWTH_FUNCTIONS__{'norm' if NORMALIZE_TO_WAVE1 else 'raw'}__{WHICH_MICE}.png"), dpi=300)
+
 
 if PLOT_ABR_POWER_VS_AGE:
     ## Correlate response magnitude with age of mouse
@@ -852,8 +941,114 @@ if PLOT_ABR_POWER_VS_LEVEL_AFTER_HL:
         # Echo
         with open(stats_filename) as fi:
             print(''.join(fi.readlines()))        
+
+
+if PLOT_ABR_POWER_VS_LEVEL_EARLY_VS_LATE_AFTER_HL:
+    ## Plot early and late waves post-bilateral HL
+    
+    # Include only HL mice
+    this_big_abr_evoked_rms_early = big_abr_evoked_rms_orig.drop(
+        'none', level='HL_type')
+    this_big_abr_evoked_rms_late = big_abr_evoked_rms_late.drop(
+        'none', level='HL_type')
+
+    # Aggregate evoked RMS over date and recording, maintaining after_HL
+    # Early
+    big_abr_evoked_rms_agg_early = this_big_abr_evoked_rms_early.groupby(
+        [lev for lev in this_big_abr_evoked_rms_early.index.names if lev != 'recording']
+        ).mean()
+    big_abr_evoked_rms_agg_early = big_abr_evoked_rms_agg_early.groupby(
+        [lev for lev in big_abr_evoked_rms_agg_early.index.names if lev != 'n_experiment']
+        ).mean()
+
+    # Late
+    big_abr_evoked_rms_agg_late = this_big_abr_evoked_rms_late.groupby(
+        [lev for lev in this_big_abr_evoked_rms_late.index.names if lev != 'recording']
+        ).mean()
+    big_abr_evoked_rms_agg_late = big_abr_evoked_rms_agg_late.groupby(
+        [lev for lev in big_abr_evoked_rms_agg_late.index.names if lev != 'n_experiment']
+        ).mean()
+    
+
+    ## To iterate over
+    channel_l = ['VL', 'VR', 'RL']
+    speaker_side_l = ['L', 'R']
+    HL_type_l = ['bilateral', 'sham']
+    after_HL_l = [False, True]
+    
+    
+    ## Plot
+    # Iterate over speaker_side (figures)
+    for speaker_side in speaker_side_l:
         
+        ## First figure: evoked power vs sound level
+        f, axa = plt.subplots(
+            len(channel_l), len(HL_type_l),
+            sharex=True, sharey=True, figsize=(5, 4))
+        f.subplots_adjust(
+            left=.17, right=.89, top=.95, bottom=.15, hspace=.15, wspace=.12)
+
+        # Iterate over channel * HL_type
+        for channel in channel_l:
+            for HL_type in HL_type_l:
+            
+                # Get ax
+                ax = axa[
+                    channel_l.index(channel),
+                    HL_type_l.index(HL_type),
+                ]
+                
+                # Slice
+                subdf_early = big_abr_evoked_rms_agg_early.xs(
+                    channel, level='channel').xs(
+                    HL_type, level='HL_type').xs(
+                    True, level='after_HL').xs(
+                    speaker_side, level='speaker_side')
+                subdf_late = big_abr_evoked_rms_agg_late.xs(
+                    channel, level='channel').xs(
+                    HL_type, level='HL_type').xs(
+                    True, level='after_HL').xs(
+                    speaker_side, level='speaker_side')
+                
+                # Iterate over mice
+                for mouse in subdf_early.index.get_level_values('mouse').unique():
+                    
+                    # Slice evoked RMS
+                    topl_early = subdf_early.loc[mouse]
+                    topl_late = subdf_late.loc[mouse]
+
+                    # Plot evoked RMS
+                    ax.semilogy(topl_early * 1e6, color='k', lw=.75)
+                    ax.semilogy(topl_late * 1e6, color='r', lw=.75)
+
+                # Label the y-axis with the channel
+                if ax in axa[:, 0]:
+                    ax.set_ylabel(channel)
+                if ax == axa[1, 0]:
+                    ax.set_ylabel(f'responses strength ({MU}V)\n{channel}')
+                
+                # Despine
+                my.plot.despine(ax)
+                ax.set_yticks([0.1, 1])
+                ax.set_xticks([30, 50, 70])
+                ax.yaxis.set_major_formatter(matplotlib.ticker.ScalarFormatter())
+
+        # Shared x-axis
+        f.text(.52, .01, 'sound level (dB SPL)', ha='center', va='bottom')
+
+        # Label the HL_type
+        axa[0, 0].set_title(HL_type_l[0])
+        axa[0, 1].set_title(HL_type_l[1])
         
+        # Legend
+        f.text(.95, .6, 'pre', color='green', ha='center', va='center')
+        f.text(.95, .54, 'post', color='magenta', ha='center', va='center')
+
+        #~ # Savefig
+        #~ savename = f'figures/PLOT_ABR_POWER_VS_LEVEL_EARLY_VS_LATE_AFTER_HL__{speaker_side}'
+        #~ f.savefig(savename + '.svg')
+        #~ f.savefig(savename + '.png', dpi=300)        
+
 
 if BASELINE_VS_N_TRIALS:
     ## Plot the noise level as a function of trial count
