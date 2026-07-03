@@ -722,13 +722,14 @@ out_of_order = pandas.concat(bad_l, ignore_index=True)
 # Construct a MultiIndex to unlabel big_labeled_waves and big_ridges
 midx = pandas.MultiIndex.from_frame(
     out_of_order[
-    ['mouse', 'channel', 'speaker_side', 'sign', 'n_ridge']
+    ['mouse', 'channel', 'speaker_side', 'sign', 'n_ridge', 'wave_name']
     ].drop_duplicates())
 
 # Unlabel - this two-step process avoids ChainedAssignmentError
 if len(midx) > 0:
     print(f'warning: unlabeling {len(midx)} waves')
     print(midx)
+midx = midx.droplevel('wave_name')
 big_ridges.loc[
     my.misc.slice_df_by_some_levels(big_ridges, midx).index, 
     'wave_name'] = np.nan
@@ -1002,6 +1003,7 @@ if PLOT_PROPORTION_OF_WAVES_DETECTED:
 
     # Plot handles
     f, axa = plt.subplots(2, 2, sharex=True, sharey=True, figsize=(7, 6))
+    f.subplots_adjust(right=.8)
     for ax, (channel, side) in zip(axa.flatten(), configs):
         # Get counts
         try:
@@ -1031,4 +1033,6 @@ if PLOT_PROPORTION_OF_WAVES_DETECTED:
     f.savefig('figures/PLOT_PROPORTION_OF_WAVES_DETECTED.png', dpi=300)
     f.savefig('figures/PLOT_PROPORTION_OF_WAVES_DETECTED.svg')
 
+    
+    
 plt.show()
