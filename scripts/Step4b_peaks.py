@@ -34,31 +34,42 @@ sampling_rate = 16000
 # Define a set of priors on where waves typically are, which are used as 
 # starting points for labeling waves
 # Each tuple is (slope_us_per_db, latency_ms)
-wave_centroids = pandas.DataFrame.from_dict({
-    'W0': (-4.3, 0.6),
-    'W1': (-5.1, 1.36),
-    'W2': (-8.7, 2.3),
-    'W3': (-8.2, 3.3),
-    'W4': (-12.9, 4.2),
-    'W5': (-13.5, 5.2),
-    'W6': (-8, 6.1),
-    'W7': (-9, 7.0),
+wave_centroids_pos = pandas.DataFrame.from_dict({
+    'W0p': (-4.3, 0.6),
+    'W1p': (-5.1, 1.36),
+    'W2p': (-8.7, 2.3),
+    'W3p': (-8.2, 3.3),
+    'W4p': (-12.9, 4.2),
+    'W5p': (-13.5, 5.2),
+    'W6p': (-8, 6.1),
+    'W7p': (-9, 7.0),
     }, 
     orient='index', 
     columns=['slope_us_per_db', 'latency_ms_at_ref_level'])
-wave_centroids.index.name = 'wave_name'
+wave_centroids_pos.index.name = 'wave_name'
+
+wave_centroids_neg = pandas.DataFrame.from_dict({
+    'W0n': (-3.7, 0.9),
+    'W1n': (-6.4, 1.8),
+    'W2n': (-9, 2.7),
+    'W3n': (-9, 3.7),
+    'W4n': (-15, 4.7),
+    'W5n': (-12, 5.7),
+    'W6n': (-9, 6.5),
+    'W7n': (-10, 7.4),
+    }, 
+    orient='index', 
+    columns=['slope_us_per_db', 'latency_ms_at_ref_level'])
+wave_centroids_neg.index.name = 'wave_name'
+
+all_wave_centroids = pandas.concat([wave_centroids_pos, wave_centroids_neg]).sort_index()
 
 # Wave colors for plotting
-wave_colors = {
-    'W0': 'C0',
-    'W1': 'C1',
-    'W2': 'C2',
-    'W3': 'C3',
-    'W4': 'C4',
-    'W5': 'C5',
-    'W6': 'C6',
-    'W7': 'C7',
-    }
+cmap = plt.get_cmap('tab20')
+wave_colors = {}
+for i in range(8):
+    wave_colors[f'W{i}p'] = cmap(2 * i)      # dark
+    wave_colors[f'W{i}n'] = cmap(2 * i + 1)  # light
 
 # Each traced ridge will traverse peaks of at least this prominence (uV)
 # Lower is more sensitive but risks bringing in noise
@@ -417,7 +428,7 @@ def masked_and_padded_hungarian(cost, row_mask, col_mask, max_cost):
     # Return
     return out
 
-def label_ridges(recording_coefs, wave_centroids=wave_centroids, 
+def label_ridges(recording_coefs, wave_centroids, 
     max_cost=max_cost_wave_assign, slope_downweighting=30):
     """Assign each ridge to a wave centroid in (slope, intercept) space.
 
@@ -592,12 +603,20 @@ for this_recording_keys, this_recording in df.groupby(group_levels):
     #~ this_recording = this_recording.loc[:, 0:]
     
     # Ridges for this config
-    this_ridges = trace_ridges(this_recording)
+    this_ridges_pos = trace_ridges(this_recording)
+    this_ridges_neg = trace_ridges(-this_recording)
+    
+    # Concat
+    this_ridges = pandas.concat(
+        [this_ridges_pos, this_ridges_neg], 
+        keys=['pos', 'neg'], names=['sign'])
+    
+    # Skip if no ridges found (otherwise next line will fail)
     if len(this_ridges) == 0:
         continue
     
     # Drop short ridges
-    ridge_len = this_ridges.groupby('n_ridge').size()
+    ridge_len = this_ridges.groupby(['sign', 'n_ridge']).size()
     drop_ridges = ridge_len.index[ridge_len.values < minimum_ridge_length]
     this_ridges = this_ridges.drop(drop_ridges)
     
@@ -624,7 +643,7 @@ for recording_keys, recording_ridges in big_ridges.groupby(group_levels):
 
     # Iterate over ridges
     coef_l = []
-    for n_ridge, ridge in recording_ridges.groupby('n_ridge'):
+    for (sign, n_ridge), ridge in recording_ridges.groupby(['sign', 'n_ridge']):
         
         # Extract the regressors
         # Reference levels to `ref_level` (so the "intercept" becomes the
@@ -636,16 +655,23 @@ for recording_keys, recording_ridges in big_ridges.groupby(group_levels):
         # Fit a line
         slope, intercept = np.polyfit(levels_db, latency_us, deg=1)
         coef_l.append({
+            'sign': sign,
             'n_ridge': n_ridge,
             'slope_us_per_db': slope, 
             'latency_ms_at_ref_level': intercept / 1e3,
             })
 
     # DataFrame
-    recording_ridge_coefs = pandas.DataFrame(coef_l).set_index('n_ridge')
+    recording_ridge_coefs = pandas.DataFrame(coef_l).set_index(['sign', 'n_ridge'])
+    
+    # Label the ridges - pos and neg separately
+    labeled_pos = label_ridges(recording_ridge_coefs.loc['pos'], wave_centroids_pos)
+    labeled_neg = label_ridges(recording_ridge_coefs.loc['neg'], wave_centroids_neg)
 
-    # Label the ridges
-    labeled = label_ridges(recording_ridge_coefs)
+    # Concat
+    labeled = pandas.concat(
+        [labeled_pos.set_index('n_ridge'), labeled_neg.set_index('n_ridge')], 
+        keys=['pos', 'neg'], names=['sign'])
 
     # Store
     labeled_waves_l.append(labeled)
@@ -656,9 +682,63 @@ big_labeled_waves = pandas.concat(
     labeled_waves_l, keys=labeled_waves_keys_l, names=group_levels).sort_index()
 
 # Join wave_name on big_ridges
-to_join = big_labeled_waves.reset_index().set_index(
-    ['mouse', 'channel', 'speaker_side', 'n_ridge'])['wave_name']
-big_ridges = big_ridges.join(to_join)
+big_ridges = big_ridges.join(big_labeled_waves['wave_name'])
+
+
+## Unlabel waves that are out of order
+# First compute order of the waves on big_ridges
+big_ridges_with_order = big_ridges.dropna(subset='wave_name').copy()
+big_ridges_with_order['wave_num'] = (
+    big_ridges_with_order['wave_name'].str.extract(r'W(\d)').astype(int))
+big_ridges_with_order['order'] = big_ridges_with_order['wave_num'] * 2 + (
+    big_ridges_with_order['wave_name'].str[-1] == 'n').astype(int)
+
+# Find out of order waves
+group_levels = ['mouse', 'channel', 'speaker_side', 'level']
+bad_l = []
+for keys, subdf in big_ridges_with_order.groupby(group_levels):
+    
+    # Sort in order
+    subdf = subdf.sort_values('order')
+    
+    # Identify out-of-order rows
+    badmask = subdf['timepoint'].diff() < 0
+    badmask = badmask | badmask.shift(-1)
+    assert subdf.drop(
+        badmask.index[badmask.values])['timepoint'].is_monotonic_increasing
+    
+    # Store the offending waves
+    badidx = subdf.reset_index().loc[:, 
+        group_levels + ['sign', 'n_ridge', 'wave_name']
+        ][badmask.values]
+    
+    # Store
+    if len(badidx) > 0:
+        bad_l.append(badidx)
+
+# Concat all out of order
+out_of_order = pandas.concat(bad_l, ignore_index=True)
+
+# Construct a MultiIndex to unlabel big_labeled_waves and big_ridges
+midx = pandas.MultiIndex.from_frame(
+    out_of_order[
+    ['mouse', 'channel', 'speaker_side', 'sign', 'n_ridge']
+    ].drop_duplicates())
+
+# Unlabel - this two-step process avoids ChainedAssignmentError
+if len(midx) > 0:
+    print(f'warning: unlabeling {len(midx)} waves')
+    print(midx)
+big_ridges.loc[
+    my.misc.slice_df_by_some_levels(big_ridges, midx).index, 
+    'wave_name'] = np.nan
+big_labeled_waves = big_labeled_waves.drop(
+    my.misc.slice_df_by_some_levels(big_labeled_waves, midx).index, 
+    )
+
+
+## Print out highest cost assignments
+print(big_labeled_waves.sort_values('cost').iloc[-30:])
 
 
 ## Plot
@@ -752,7 +832,7 @@ if PLOT_RIDGES:
             if this_ridges is not None:
                 
                 # Iterate over ridges
-                for n_ridge, ridge in this_ridges.groupby('n_ridge'):
+                for (sign, n_ridge), ridge in this_ridges.groupby(['sign', 'n_ridge']):
 
                     # Undo multi-indexing
                     ridge = ridge.reset_index()
@@ -771,7 +851,7 @@ if PLOT_RIDGES:
                     ax.plot(
                         ridge_t, 
                         ridge['level'].values, 
-                        marker='o', ls='-', color=color, ms=2, mew=0)
+                        ls='-', color=color, lw=.8)
 
             # Pretty
             im.set_clim((-3, 3))
@@ -787,15 +867,17 @@ if PLOT_RIDGES:
             if ax in axa[:, 0]:
                 ax.set_ylabel(f'{channel} {speaker_side}', rotation=0,
                     ha='right', va='center')
-    
+
+    # Savefig
+    f.savefig('figures/PLOT_RIDGES.png', dpi=300)
+    f.savefig('figures/PLOT_RIDGES.svg')    
 
 ## Plot labeled ridges in coef space to refine centroids
 if PLOT_COEFS:
     f, ax = plt.subplots(figsize=(5, 7))
 
     # Color per wave
-    cmap = plt.get_cmap('tab10')
-    wave_names = list(wave_centroids.index)
+    wave_names = list(wave_colors.keys())
 
     # Each wave's ridges
     for n_wave, wave_name in enumerate(wave_names):
@@ -813,7 +895,7 @@ if PLOT_COEFS:
             ms=3, mew=0, alpha=0.5, label=wave_name)
 
         # Centroid
-        slope, intercept = wave_centroids.loc[wave_name]
+        slope, intercept = all_wave_centroids.loc[wave_name]
         ax.plot(slope, intercept, 'x', color=color, ms=10, mew=2)
 
     # Pretty
@@ -821,7 +903,10 @@ if PLOT_COEFS:
     ax.set_ylabel('intercept at loudest (ms)')
     ax.legend(loc='upper right', fontsize='small')
 
-
+    # Savefig
+    f.savefig('figures/PLOT_COEFS.png', dpi=300)
+    f.savefig('figures/PLOT_COEFS.svg')
+    
 ## Histogram the wave times
 if HISTOGRAM_WAVE_LATENCIES:
     # Levels to plot
@@ -855,6 +940,10 @@ if HISTOGRAM_WAVE_LATENCIES:
     # xlabel
     axa[-1].set_xlabel('latency (ms)')
 
+    # Savefig
+    f.savefig('figures/HISTOGRAM_WAVE_LATENCIES.png', dpi=300)
+    f.savefig('figures/HISTOGRAM_WAVE_LATENCIES.svg')
+
 ## Swarm plot
 if SWARM_PLOT_LATENCIES:
     # Assign latency
@@ -870,16 +959,22 @@ if SWARM_PLOT_LATENCIES:
 
     # Swarm or strip plot the latency
     f, ax = plt.subplots(figsize=(6, 8))
-    #~ seaborn.swarmplot(
-        #~ data=sub, x='latency_ms', y='level', hue='wave_name',
-        #~ orient='h', palette=palette, size=2, ax=ax)
+    f.subplots_adjust(right=.8)
+    hue_order = sorted(sub['wave_name'].unique())
     seaborn.stripplot(
         data=sub, x='latency_ms', y='level', hue='wave_name',
+        hue_order=hue_order, order=sorted(sub['level'].unique(), reverse=True),
         orient='h', palette=palette, size=2, jitter=0.3, ax=ax)
+
+    ax.set_xlabel('latency (ms)')
+    ax.legend(fontsize='small', loc='upper left', bbox_to_anchor=(1.02, 1))    
     
     # Pretty
     ax.set_xlabel('latency (ms)')
 
+    # Savefig
+    f.savefig('figures/SWARM_PLOT_LATENCIES.png', dpi=300)
+    f.savefig('figures/SWARM_PLOT_LATENCIES.svg')
 
 ## Proportion of waves detected
 if PLOT_PROPORTION_OF_WAVES_DETECTED:
@@ -931,5 +1026,9 @@ if PLOT_PROPORTION_OF_WAVES_DETECTED:
         ax.set_xlabel('level (dB)')
     for ax in axa[:, 0]:
         ax.set_ylabel('count')
+
+    # Savefig
+    f.savefig('figures/PLOT_PROPORTION_OF_WAVES_DETECTED.png', dpi=300)
+    f.savefig('figures/PLOT_PROPORTION_OF_WAVES_DETECTED.svg')
 
 plt.show()
