@@ -31,14 +31,18 @@ output_directory = paths['output_directory']
 ## Params
 sampling_rate = 16000
 
-# Default wave centroids to help with assignment
+# Define a set of priors on where waves typically are, which are used as 
+# starting points for labeling waves
+# Each tuple is (slope_us_per_db, latency_ms)
 wave_centroids = pandas.DataFrame.from_dict({
-    'W0': (-3.8, 0.6),
-    'W1': (-5.25, 1.36),
-    'W2': (-9.1, 2.3),
-    'W3': (-8.5, 3.16),
-    'W4': (-12.8, 4.2),
-    'W5': (-13.3, 5.3),
+    'W0': (-4.3, 0.6),
+    'W1': (-5.1, 1.36),
+    'W2': (-8.7, 2.3),
+    'W3': (-8.2, 3.3),
+    'W4': (-12.9, 4.2),
+    'W5': (-13.5, 5.2),
+    'W6': (-8, 6.1),
+    'W7': (-9, 7.0),
     }, 
     orient='index', 
     columns=['slope_us_per_db', 'latency_ms_at_ref_level'])
@@ -52,12 +56,98 @@ wave_colors = {
     'W3': 'C3',
     'W4': 'C4',
     'W5': 'C5',
+    'W6': 'C6',
+    'W7': 'C7',
     }
+
+# Each traced ridge will traverse peaks of at least this prominence (uV)
+# Lower is more sensitive but risks bringing in noise
+# Any more than 0.15 and we cannot detect the smallest W4
+# With the standard find_peaks function on min prominence, this had to be
+# quite small to catch W4 (eg 0.15) at which point it also tended to pick up
+# a lot of noise. With the adjusted max_prominence method it can be much higher
+# and still detect W1 and W4 (e.g., 0.5)
+min_prominence = 0.4
+
+# How far to search for "bases" when calculating prominence. This is the 
+# total window size in samples.
+# This should be no more than 1.5x of an ABR period. 1x should barely capture
+# the adjacent troughs, but round up a little in case of frequency skew.
+# The default will search forever, which will greatly overestimate prominence
+# for a narrowband signal like this one, leading to noise peaks especially
+# before t=0.
+find_peaks_wlen = 17
+
+# Ridge tracing will start at this level
+# Choices are 'middle', 'loudest', and an integer with 0 being softest
+start_level = 'loudest'
+
+# This is how far a peak can shift across one level and still be in the 
+# same traced ridge. Units: samples
+# Higher might cause jumping; lower might cause legitimate ridges to
+# terminate early
+# Any less than 5 and we can't reliably detect W4
+max_shift = 5
+
+# This is how apart peaks in the `start_level` can be
+# Lower pulls out more noise ridges; higher might skip over real ridges
+# that are too close together
+min_seed_spacing = 5
+
+# The minimum length of a ridge in levels. Shorter ridges are discarded
+# Lower is more sensitive for weak responses but might cause false labels
+minimum_ridge_length = 5
+
+# The maximum cost of a wave assignment
+# Lower is stricter (more unlabeled waves); higher might allow false labels
+max_cost_wave_assign = 0.15
+
+# Assign priority waves first - Can be helpful to ensure we get W1 and W4
+priority_wave_list = [] #['W1', 'W4']
 
 
 ## Helper functions
-def trace_ridges(abr_2d, min_prominence=0.15, start_level='middle',
-    max_shift=3, min_seed_spacing=8):
+def find_peaks_max_prominence(sig, prominence, initial_prom=0, **kwargs):
+    """Edit find_peaks output to filter on max prominence instead of min
+    
+    By default, find_peaks calculates prominence as the minimum of left
+    and right side, a conservative estimate that underestimates the prominence
+    of shoulder peaks like W4. This function instead calculates prominence
+    of the maximum of left and right peaks. It works by calling find_peaks
+    with prominence=0, overwriting 'prominence' as the max prominence, and
+    then applying a filter for `prominence`.
+    
+    sig : signal
+    initial_prom : sent to find_peaks
+    prominence : filters found peaks by this value
+    kwargs : sent to find_peaks
+    """
+    # Run with first_pass_prominence
+    peak_idxs, peak_data = scipy.signal.find_peaks(
+        sig, 
+        prominence=initial_prom, 
+        **kwargs,
+        )
+    
+    # Extract max prominence and overwrite 'prominences'
+    left_prom = (
+        sig[peak_idxs] - sig[peak_data['left_bases']])
+    right_prom = (
+        sig[peak_idxs] - sig[peak_data['right_bases']])
+    peak_data['prominences'] = np.max([left_prom, right_prom], axis=0)
+    
+    # Filter
+    keep_mask = peak_data['prominences'] > prominence
+    peak_idxs = peak_idxs[keep_mask]
+    peak_data['prominences'] = peak_data['prominences'][keep_mask]
+    peak_data['left_bases'] = peak_data['left_bases'][keep_mask]
+    peak_data['right_bases'] = peak_data['right_bases'][keep_mask]
+    
+    # Return
+    return peak_idxs, peak_data
+
+def trace_ridges(abr_2d, min_prominence=min_prominence, start_level=start_level,
+    max_shift=max_shift, min_seed_spacing=min_seed_spacing):
     """Trace ridges across levels from seed peaks at `start level`.
 
     Arguments
@@ -117,7 +207,7 @@ def trace_ridges(abr_2d, min_prominence=0.15, start_level='middle',
     if start_level == 'middle':
         start_row_idx = len(abr_2d) // 2
     elif start_level == 'loudest':
-        start_row_idx = 0
+        start_row_idx = len(abr_2d) - 1
     else:
         start_row_idx = start_level
     
@@ -128,9 +218,16 @@ def trace_ridges(abr_2d, min_prominence=0.15, start_level='middle',
 
     # Find the seed peaks at `start_level` that initalize each ridge
     # The distance criterion avoids noise ridges competing for peaks
-    seed_peak_idxs, seed_peak_data = scipy.signal.find_peaks(
-        abr_2d.iloc[start_row_idx], 
-        prominence=min_prominence, 
+    sig = abr_2d.iloc[start_row_idx].values
+    #~ seed_peak_idxs1, seed_peak_data1 = scipy.signal.find_peaks(
+        #~ sig, 
+        #~ prominence=min_prominence, 
+        #~ distance=min_seed_spacing,
+        #~ )
+    seed_peak_idxs, seed_peak_data = find_peaks_max_prominence(
+        sig, 
+        prominence=min_prominence,
+        wlen=find_peaks_wlen,
         distance=min_seed_spacing,
         )
     
@@ -182,10 +279,11 @@ def trace_ridges(abr_2d, min_prominence=0.15, start_level='middle',
             # Find all peaks at this level
             # Unlike the seed (start) level, here we allow peaks to be
             # arbritrarily close together. Some will be noise. 
-            level_peak_idxs, level_peak_data = scipy.signal.find_peaks(
-                abr_2d.iloc[row_idx], 
-                prominence=min_prominence,
-                )
+            sig = abr_2d.iloc[row_idx].values
+            #~ level_peak_idxs, level_peak_data = scipy.signal.find_peaks(
+                #~ sig, prominence=min_prominence)
+            level_peak_idxs, level_peak_data = find_peaks_max_prominence(
+                sig, prominence=min_prominence, wlen=find_peaks_wlen)
 
             # Break if there are no peaks or no active ridges
             if len(level_peak_idxs) == 0 or len(active_ridges) == 0:
@@ -261,9 +359,10 @@ def trace_ridges(abr_2d, min_prominence=0.15, start_level='middle',
     res = pandas.DataFrame(ridge_points_l)
     
     # Use row_idx and col_idx to index into abr_2d
-    res['timepoint'] = abr_2d.columns[res['col_idx']]
-    res['level'] = abr_2d.index[res['row_idx']]
-    res = res.set_index(['n_ridge', 'level']).sort_index()
+    if len(res) > 0:
+        res['timepoint'] = abr_2d.columns[res['col_idx']]
+        res['level'] = abr_2d.index[res['row_idx']]
+        res = res.set_index(['n_ridge', 'level']).sort_index()
 
     # Return
     return res
@@ -318,7 +417,8 @@ def masked_and_padded_hungarian(cost, row_mask, col_mask, max_cost):
     # Return
     return out
 
-def label_ridges(recording_coefs, wave_centroids=wave_centroids, max_cost=0.2):
+def label_ridges(recording_coefs, wave_centroids=wave_centroids, 
+    max_cost=max_cost_wave_assign, slope_downweighting=30):
     """Assign each ridge to a wave centroid in (slope, intercept) space.
 
     Arguments
@@ -329,6 +429,7 @@ def label_ridges(recording_coefs, wave_centroids=wave_centroids, max_cost=0.2):
         index: wave_name
         columns: same as recording_coefs
     - max_cost : reject assignments above this distance (normalized units).
+    - slope_downweighting : downweight slope's cost by this much
 
     Work flow
     - Standardize the weighting of slope_us_per_db by dividing by 10 and
@@ -364,8 +465,8 @@ def label_ridges(recording_coefs, wave_centroids=wave_centroids, max_cost=0.2):
     wave_centroids['latency_ms_at_ref_level'] /= 4
 
     # Further downweight slope because it is noisy
-    recording_coefs['slope_us_per_db'] /= 100
-    wave_centroids['slope_us_per_db'] /= 100
+    recording_coefs['slope_us_per_db'] /= slope_downweighting
+    wave_centroids['slope_us_per_db'] /= slope_downweighting
 
     # Define the cost as the distance between each ridge and each centroid
     cost = np.linalg.norm(
@@ -381,7 +482,7 @@ def label_ridges(recording_coefs, wave_centroids=wave_centroids, max_cost=0.2):
     
     # Stage 1: Assign priority waves W1/W4
     # Use only priority waves, but allow all ridges
-    priority_wave_mask = wave_centroids.index.isin(['W1', 'W4'])
+    priority_wave_mask = wave_centroids.index.isin(priority_wave_list)
     assignments1 = masked_and_padded_hungarian(
         cost=cost, 
         row_mask=np.ones(cost.shape[0], dtype=bool), 
@@ -404,13 +505,13 @@ def label_ridges(recording_coefs, wave_centroids=wave_centroids, max_cost=0.2):
     res = pandas.DataFrame(
         assignments, columns=['rc_idx', 'centroids_idx', 'cost'])
 
-    # Convert indexing into recording_coefs and wave_centroids into 
-    # n_ridge and wave_name
-    res['wave_name'] = wave_centroids.index[res['centroids_idx']]
-    res['n_ridge'] = recording_coefs.index[res['rc_idx']]
-    res = res.drop(['centroids_idx', 'rc_idx'], axis=1)
-
     if len(res) > 0:
+        # Convert indexing into recording_coefs and wave_centroids into 
+        # n_ridge and wave_name
+        res['wave_name'] = wave_centroids.index[res['centroids_idx']]
+        res['n_ridge'] = recording_coefs.index[res['rc_idx']]
+        res = res.drop(['centroids_idx', 'rc_idx'], axis=1)
+        
         # Join on original recording coefs
         res = res.join(orig_recording_coefs, on='n_ridge')
     
@@ -486,14 +587,18 @@ for this_recording_keys, this_recording in df.groupby(group_levels):
     this_recording = this_recording.droplevel(group_levels).copy()
     
     # Drop timepoints before t = 0 to avoid noise ridges
-    this_recording = this_recording.loc[:, 0:]
+    # There is occasionally a ghost ridge at t=-1 or so, which could be a 
+    # filter ring from the summating potential
+    #~ this_recording = this_recording.loc[:, 0:]
     
     # Ridges for this config
     this_ridges = trace_ridges(this_recording)
+    if len(this_ridges) == 0:
+        continue
     
     # Drop short ridges
     ridge_len = this_ridges.groupby('n_ridge').size()
-    drop_ridges = ridge_len.index[ridge_len.values < 4]
+    drop_ridges = ridge_len.index[ridge_len.values < minimum_ridge_length]
     this_ridges = this_ridges.drop(drop_ridges)
     
     # Store
@@ -559,6 +664,9 @@ big_ridges = big_ridges.join(to_join)
 ## Plot
 PLOT_RIDGES = True
 PLOT_COEFS = True
+HISTOGRAM_WAVE_LATENCIES = True
+SWARM_PLOT_LATENCIES = True
+PLOT_PROPORTION_OF_WAVES_DETECTED = True
 
 
 ## Plot ridges
@@ -667,7 +775,7 @@ if PLOT_RIDGES:
 
             # Pretty
             im.set_clim((-3, 3))
-            ax.set_xlim((-1, 6))
+            ax.set_xlim((-2, 7))
             ax.set_xticks([])
             ax.set_yticks([])
 
@@ -714,31 +822,114 @@ if PLOT_COEFS:
     ax.legend(loc='upper right', fontsize='small')
 
 
-#~ ## Overlay fitted ridge lines to see where bands separate
-#~ f, ax = plt.subplots(figsize=(5, 4))
+## Histogram the wave times
+if HISTOGRAM_WAVE_LATENCIES:
+    # Levels to plot
+    levels = sorted(big_ridges.index.get_level_values('level').unique())[::-1]
 
-#~ # Level range to draw each fit over
-#~ all_levels = np.sort(df.index.get_level_values('label').unique())
+    # Bins
+    bins = np.arange(0, big_ridges['timepoint'].max() + 2) / sampling_rate * 1000
+    
+    # One ax per level
+    f, axa = plt.subplots(
+        len(levels), 1, sharex=True, sharey=True, figsize=(6, 0.5 * len(levels)))
 
-#~ # Each ridge: fit latency vs level, draw the line
-#~ coefs_l = []
-#~ for grp_key, ridge in big_ridges.groupby(group_levels + ['n_ridge']):
-    #~ levels = ridge['level'].values
-    #~ lats = ridge['timepoint'].values / sampling_rate * 1000
+    # PLot each
+    for ax, level in zip(axa, levels):
+        # Slice
+        sub = big_ridges.xs(level, level='level')
+        
+        # Hist each
+        for wave_name, grp in sub.groupby('wave_name', dropna=False):
+            color = 'k' if pandas.isnull(wave_name) else wave_colors[wave_name]
+            ax.hist(grp['timepoint'] / sampling_rate * 1000,
+                bins=bins, color=color, alpha=0.5)
+        
+        # ylabel
+        ax.set_ylabel(f'{level}', rotation=0, ha='right', va='center')
+        
+        # Despine
+        my.plot.despine(ax)
+        ax.set_yticks([])
 
-    #~ # Fit latency vs level, intercept referenced to the highest level
-    #~ coefs = np.polyfit(levels - all_levels.max(), lats, 1)
-    #~ coefs_l.append(coefs)
+    # xlabel
+    axa[-1].set_xlabel('latency (ms)')
 
-    #~ # Draw over the full level range, extrapolated
-    #~ fit_levels = np.array([all_levels.min(), all_levels.max()])
-    #~ ax.plot(np.polyval(coefs, fit_levels), fit_levels,
-        #~ '-', color='k', alpha=0.15, lw=0.5)
+## Swarm plot
+if SWARM_PLOT_LATENCIES:
+    # Assign latency
+    big_ridges = big_ridges.copy()
+    big_ridges['latency_ms'] = big_ridges['timepoint'] / sampling_rate * 1000
 
-#~ # Pretty
-#~ ax.set_xlim((0, 6))
-#~ ax.set_xlabel('latency (ms)')
-#~ ax.set_ylabel('level (dB)')
+    # Fillna with unlabeled
+    sub = big_ridges.reset_index()
+    sub['wave_name'] = sub['wave_name'].fillna('unlabeled')
 
+    # Define a palette to use with unlabeled as black
+    palette = dict(wave_colors, unlabeled='k')
+
+    # Swarm or strip plot the latency
+    f, ax = plt.subplots(figsize=(6, 8))
+    #~ seaborn.swarmplot(
+        #~ data=sub, x='latency_ms', y='level', hue='wave_name',
+        #~ orient='h', palette=palette, size=2, ax=ax)
+    seaborn.stripplot(
+        data=sub, x='latency_ms', y='level', hue='wave_name',
+        orient='h', palette=palette, size=2, jitter=0.3, ax=ax)
+    
+    # Pretty
+    ax.set_xlabel('latency (ms)')
+
+
+## Proportion of waves detected
+if PLOT_PROPORTION_OF_WAVES_DETECTED:
+    # Count waves detected
+    counts = big_ridges.copy()
+    counts['wave_name'] = counts['wave_name'].fillna('unlabeled')
+    counts = counts.groupby(
+        ['channel', 'speaker_side', 'wave_name', 'level']).size()
+
+    # Reindex to fill absent (wave, level) combos with 0
+    levels = sorted(big_ridges.index.get_level_values('level').unique())
+    full_idx = pandas.MultiIndex.from_product([
+        counts.index.get_level_values('channel').unique(),
+        counts.index.get_level_values('speaker_side').unique(),
+        counts.index.get_level_values('wave_name').unique(),
+        levels],
+        names=['channel', 'speaker_side', 'wave_name', 'level'])
+    counts = counts.reindex(full_idx, fill_value=0)
+
+    # Get a color palette
+    palette = dict(wave_colors, unlabeled='k')
+    
+    # Configs to plot
+    configs = [('VL', 'L'), ('VL', 'R'), ('VR', 'L'), ('VR', 'R')]
+
+    # Plot handles
+    f, axa = plt.subplots(2, 2, sharex=True, sharey=True, figsize=(7, 6))
+    for ax, (channel, side) in zip(axa.flatten(), configs):
+        # Get counts
+        try:
+            sub = counts.loc[channel].loc[side]
+        except KeyError:
+            continue
+        
+        # Plot for each wave
+        for wave_name, grp in sub.groupby('wave_name'):
+            ax.plot(grp.index.get_level_values('level'), grp.values,
+                marker='o', ms=3, color=palette[wave_name], label=wave_name)
+        
+        # Pretty
+        ax.set_title(f'{channel} {side}', size='small')
+        ax.set_ylim(bottom=0)
+        ax.set_xticks((30, 50, 70))
+        my.plot.despine(ax)
+
+    # Legend
+    axa[0, 1].legend(fontsize='small', loc='upper left', bbox_to_anchor=(1.02, 1))
+    for ax in axa[-1]:
+        ax.set_xlabel('level (dB)')
+    for ax in axa[:, 0]:
+        ax.set_ylabel('count')
 
 plt.show()
