@@ -128,6 +128,14 @@ def find_peaks_max_prominence(sig, prominence, initial_prom=0, **kwargs):
     with prominence=0, overwriting 'prominence' as the max prominence, and
     then applying a filter for `prominence`.
     
+    One issue with this choice is that a trivially small dip (e.g., W0n)
+    can have a large "prominence" simply because the following peak is high
+    (e.g., W1p). The old method (min of both) was resilient to this. An 
+    alternative that might make sense for ABR is to always use left prominence,
+    so that only peaks with sharp ascents can be picked. I think for now it
+    is okay to leave it like this - it helps pick out the subsequent troughs
+    in case we want to compute peak-to-peak.
+    
     sig : signal
     initial_prom : sent to find_peaks
     prominence : filters found peaks by this value
@@ -743,12 +751,15 @@ print(big_labeled_waves.sort_values('cost').iloc[-30:])
 
 
 ## Plot
-PLOT_RIDGES = True
-PLOT_COEFS = True
+PLOT_RIDGES = False
+PLOT_COEFS = False
 HISTOGRAM_WAVE_LATENCIES = True
-SWARM_PLOT_LATENCIES = True
-PLOT_PROPORTION_OF_WAVES_DETECTED = True
-
+SWARM_PLOT_LATENCIES = False
+PLOT_PROPORTION_OF_WAVES_DETECTED = False
+PLOT_EXAMPLE_WATERFALL = False
+PLOT_EXAMPLE_HEATMAP = False
+PLOT_LOUDEST_PEAKS = False
+STRIP_PLOT_PEAK_LATENCY = False
 
 ## Plot ridges
 if PLOT_RIDGES:
@@ -914,11 +925,15 @@ if HISTOGRAM_WAVE_LATENCIES:
     levels = sorted(big_ridges.index.get_level_values('level').unique())[::-1]
 
     # Bins
-    bins = np.arange(0, big_ridges['timepoint'].max() + 2) / sampling_rate * 1000
+    bins = df.columns.values / sampling_rate * 1000
     
     # One ax per level
     f, axa = plt.subplots(
-        len(levels), 1, sharex=True, sharey=True, figsize=(6, 0.5 * len(levels)))
+        len(levels), 1, 
+        sharex=True, sharey=True, 
+        figsize=(4, 4.7)
+        )
+    f.subplots_adjust(left=.2, bottom=.15, top=.95, right=.95, hspace=0)
 
     # PLot each
     for ax, level in zip(axa, levels):
@@ -927,19 +942,32 @@ if HISTOGRAM_WAVE_LATENCIES:
         
         # Hist each
         for wave_name, grp in sub.groupby('wave_name', dropna=False):
-            color = 'k' if pandas.isnull(wave_name) else wave_colors[wave_name]
-            ax.hist(grp['timepoint'] / sampling_rate * 1000,
-                bins=bins, color=color, alpha=0.5)
+            if pandas.isnull(wave_name) or wave_name in ['W0p', 'W0n', 'W6p', 'W6n', 'W7p', 'W7n']:
+                continue
+            
+            color = wave_colors[wave_name]
+            ax.hist(
+                grp['timepoint'] / sampling_rate * 1000,
+                bins=bins, 
+                color=color, alpha=1, histtype='step', lw=1,
+                )
         
         # ylabel
-        ax.set_ylabel(f'{level}', rotation=0, ha='right', va='center')
+        if ax is axa[0] or ax is axa[-1]:
+            ax.set_ylabel(level, rotation=0, va='center', ha='right')
         
         # Despine
-        my.plot.despine(ax)
+        if ax is axa[-1]:
+            my.plot.despine(ax, which=('left', 'top', 'right'))
+        else:
+            my.plot.despine(ax, which=('left', 'top', 'right', 'bottom'))
         ax.set_yticks([])
 
-    # xlabel
-    axa[-1].set_xlabel('latency (ms)')
+    # Pretty
+    axa[6].set_ylabel('sound level (dB SPL)', labelpad=20)
+    axa[-1].set_xlabel('time from click (ms)')
+    ax.set_xlim((1, 7))
+    ax.set_xticks((1, 2, 3, 4, 5, 6, 7))
 
     # Savefig
     f.savefig('figures/HISTOGRAM_WAVE_LATENCIES.png', dpi=300)
@@ -1033,6 +1061,306 @@ if PLOT_PROPORTION_OF_WAVES_DETECTED:
     f.savefig('figures/PLOT_PROPORTION_OF_WAVES_DETECTED.png', dpi=300)
     f.savefig('figures/PLOT_PROPORTION_OF_WAVES_DETECTED.svg')
 
+
+## Plot example ABR with labeled peaks
+example_mouse = 'Cat_227'
+channel_l = ['VL', 'VR']
+speaker_side_l = ['L', 'R']
+
+# Waves to show, with one collapsed color each (pos color)
+legend_wave_l = ['W1', 'W2', 'W3', 'W4']
+legend_colors = {w: wave_colors[w + 'p'] for w in legend_wave_l}
+
+# Column titles by speaker_side
+col_title = {'L': 'sound from left', 'R': 'sound from right'}
+
+
+def wave_color(wave_name):
+    """Collapsed (sign-independent) color for a labeled wave"""
+    # Strip trailing p/n and look up the collapsed color
+    return legend_colors[wave_name[:-1]]
+
+
+def wave_legend(ax):
+    """Draw a W1-W4 legend on `ax`, outside upper right"""
+    handles = [
+        matplotlib.lines.Line2D([], [], color=legend_colors[w], label=w)
+        for w in legend_wave_l]
+    ax.legend(handles=handles, fontsize='small',
+        loc='upper left', bbox_to_anchor=(1.05, 1))
+
+
+## View 1: stacked waterfall, traces offset by level
+if PLOT_EXAMPLE_WATERFALL:
+
+    # Vertical offset between adjacent levels
+    offset = 2.0
+
+    # Figure
+    f, axa = plt.subplots(
+        2, 2, sharex=True, sharey=True, figsize=(5.4, 3))
+    f.subplots_adjust(
+        left=.1, right=.85, top=.9, bottom=.14, hspace=.2, wspace=.2)
+
+    # Each config
+    for config in config_l:
+        channel, speaker_side = config
+        ax = axa[channel_l.index(channel), speaker_side_l.index(speaker_side)]
+
+        # Get ABR for this config
+        try:
+            abr = df.loc[example_mouse].loc[channel].loc[speaker_side]
+        except KeyError:
+            continue
+
+        # Time in ms
+        t = abr.columns.values / sampling_rate * 1000
+
+        # Plot each level, offset by its rank
+        levels = sorted(abr.index)
+        for n_level, level in enumerate(levels):
+            ax.plot(t, abr.loc[level].values + n_level * offset,
+                color='k', lw=.5)
+
+        # Get this config's labeled ridges
+        try:
+            this_ridges = big_ridges.loc[example_mouse].loc[channel].loc[
+                speaker_side]
+        except KeyError:
+            this_ridges = None
+
+        # Overlay peaks colored by wave
+        if this_ridges is not None:
+            for (sign, n_ridge), ridge in this_ridges.groupby(['sign', 'n_ridge']):
+                ridge = ridge.reset_index()
+
+                # Color by wave name
+                wave_name = ridge['wave_name'].unique().item()
+                if pandas.isnull(wave_name) or wave_name[:-1] not in legend_colors:
+                    continue
+                color = wave_color(wave_name)
+
+                # Peak position: offset each point by its level's rank
+                ridge_t = ridge['timepoint'].values / sampling_rate * 1000
+                ridge_y = [
+                    abr.loc[lvl].iloc[col] + levels.index(lvl) * offset
+                    for lvl, col in zip(ridge['level'], ridge['col_idx'])]
+                ax.plot(ridge_t, ridge_y, marker='o', ls='none',
+                    color=color, ms=3, mew=0)
+
+        # Pretty
+        ax.set_xlim((-1, 7))
+        ax.set_xticks((0, 2, 4, 6))
+        ax.set_yticks([])
+        my.plot.despine(ax, which=('left', 'top', 'right'))
+
+        # Column titles on top row
+        if channel == channel_l[0]:
+            ax.set_title(col_title[speaker_side])
+
+        # Row labels on left column
+        if speaker_side == speaker_side_l[0]:
+            ax.set_ylabel(channel)
+
+    # Legend in the space to the right of the top-right axis
+    wave_legend(axa[0, -1])
+
+    # X label
+    f.text(.51, .01, 'time (ms)', ha='center', va='bottom')
+
+    # Savefig
+    f.savefig('figures/PLOT_EXAMPLE_WATERFALL.png', dpi=300)
+    f.savefig('figures/PLOT_EXAMPLE_WATERFALL.svg')
+
+
+## View 2: heatmap with ridges (as in PLOT_RIDGES)
+if PLOT_EXAMPLE_HEATMAP:
+
+    # Figure
+    f, axa = plt.subplots(
+        2, 2, sharex=True, sharey=True, figsize=(5.4, 3))
+    f.subplots_adjust(
+        left=.1, right=.82, top=.9, bottom=.14, hspace=.2, wspace=.2)
+
+    # Each config
+    for config in config_l:
+        channel, speaker_side = config
+        ax = axa[channel_l.index(channel), speaker_side_l.index(speaker_side)]
+
+        # Get ABR
+        try:
+            abr = df.loc[example_mouse].loc[channel].loc[speaker_side]
+        except KeyError:
+            continue
+
+        # Heatmap
+        im = my.plot.imshow(
+            abr, ax=ax, cmap='gray',
+            x=abr.columns.values / sampling_rate * 1000,
+            y=abr.index.values, origin='lower')
+        im.set_clim((-3, 3))
+
+        # Ridges
+        try:
+            this_ridges = big_ridges.loc[example_mouse].loc[channel].loc[
+                speaker_side]
+        except KeyError:
+            this_ridges = None
+
+        # Overlay
+        if this_ridges is not None:
+            for (sign, n_ridge), ridge in this_ridges.groupby(['sign', 'n_ridge']):
+                ridge = ridge.reset_index()
+                wave_name = ridge['wave_name'].unique().item()
+                if pandas.isnull(wave_name) or wave_name[:-1] not in legend_colors:
+                    continue
+                color = wave_color(wave_name)
+                ridge_t = ridge['timepoint'].values / sampling_rate * 1000
+                ax.plot(ridge_t, ridge['level'].values, ls='-',
+                    color=color, ms=2, mew=0)
+
+        # Pretty
+        ax.set_xlim((-1, 6))
+        ax.set_yticks([30, 70])
+
+        # Column titles on top row
+        if channel == channel_l[0]:
+            ax.set_title(col_title[speaker_side])
+
+        # Row labels on left column
+        if speaker_side == speaker_side_l[0]:
+            ax.set_ylabel(channel)
+
+    # Colorbar spanning both columns
+    cb = f.colorbar(im, ax=axa, fraction=.05, pad=.02)
+    cb.set_label('ABR (' + MU + 'V)')
+    cb.set_ticks([-3, 0, 3])
+
+    # X label
+    f.text(.51, .01, 'time (ms)', ha='center', va='bottom')
+
+    # Savefig
+    f.savefig('figures/PLOT_EXAMPLE_HEATMAP.png', dpi=300)
+    f.savefig('figures/PLOT_EXAMPLE_HEATMAP.svg')
+
+
+## Plot loudest-level ABR per mouse, peaks circled
+if PLOT_LOUDEST_PEAKS:
+
+    # Figure
+    f, axa = plt.subplots(
+        2, 2, sharex=True, sharey=True, figsize=(5.4, 3))
+    f.subplots_adjust(
+        left=.1, right=.85, top=.9, bottom=.14, hspace=.2, wspace=.2)
+
+    # Each config
+    for config in config_l:
+        channel, speaker_side = config
+        ax = axa[channel_l.index(channel), speaker_side_l.index(speaker_side)]
+
+        # Each mouse
+        for mouse in sorted(df.index.get_level_values('mouse').unique()):
+
+            # Loudest-level trace for this mouse and config
+            try:
+                trace = df.loc[mouse].loc[channel].loc[speaker_side].loc[
+                    loudest_db]
+            except KeyError:
+                continue
+            t = trace.index.values / sampling_rate * 1000
+            ax.plot(t, trace.values, color='k', lw=.5, alpha=.3)
+
+            # Peaks at the loudest level
+            try:
+                peaks = big_ridges.loc[mouse].loc[channel].loc[
+                    speaker_side].xs(loudest_db, level='level')
+            except KeyError:
+                continue
+
+            # Circle each peak, colored by wave (unlabeled black)
+            for _, peak in peaks.iterrows():
+                wave_name = peak['wave_name']
+                color = 'k' if pandas.isnull(wave_name) else wave_colors[wave_name]
+                peak_t = peak['timepoint'] / sampling_rate * 1000
+                ax.plot(peak_t, trace.loc[peak['timepoint']],
+                    marker='o', ls='none', color=color, ms=3, mew=0)
+
+        # Pretty
+        ax.set_xlim((-1, 7))
+        ax.set_xticks((0, 2, 4, 6))
+        ax.set_yticks((-5, 0, 5))
+        my.plot.despine(ax)
+        if channel == channel_l[0]:
+            ax.set_title(col_title[speaker_side])
+        if speaker_side == speaker_side_l[0]:
+            ax.set_ylabel(channel)
+
+    # Legend (W1-W4)
+    wave_legend(axa[0, -1])
+
+    f.text(.51, .01, 'time (ms)', ha='center', va='bottom')
+    f.text(.51, .01, 'time (ms)', ha='center', va='bottom')
     
+    # Savefig
+    f.savefig('figures/PLOT_LOUDEST_PEAKS.svg')
+    f.savefig('figures/PLOT_LOUDEST_PEAKS.png', dpi=300)
+
+if STRIP_PLOT_PEAK_LATENCY:
+
+    # Latency (ms) of each labeled peak at the loudest level
+    loudest = big_ridges.dropna(subset='wave_name').xs(
+        loudest_db, level='level').copy()
+    loudest['t'] = loudest['timepoint'] / sampling_rate * 1000
+
+    # Config as a single ordered label for the x-axis
+    config_order = ['VL L', 'VL R', 'VR L', 'VR R']
+    loudest = loudest.reset_index()
+    loudest['config'] = loudest['channel'] + ' ' + loudest['speaker_side']
+
+    # One subplot per wave, in this order
+    wave_l = ['W1p', 'W1n', 'W2p', 'W4p']
+    f, axa = plt.subplots(
+        1, len(wave_l), sharex=True, sharey=True,
+        figsize=(1.5 * len(wave_l), 3))
+    f.subplots_adjust(left=.1, right=.98, bottom=.25, wspace=.2)
+
+    # Each wave
+    for wave_name, ax in zip(wave_l, axa):
+        this_wave = loudest[loudest['wave_name'] == wave_name]
+
+        # Keep only mice with all 4 configs present
+        config_counts = this_wave.groupby('mouse')['config'].nunique()
+        complete_mice = config_counts.index[config_counts == len(config_order)]
+        this_wave = this_wave[this_wave['mouse'].isin(complete_mice)]
+
+        # Strip plot over configs
+        seaborn.stripplot(
+            this_wave, x='config', y='t',
+            marker='$\circ$', color='k', alpha=.5,
+            order=config_order, ax=ax)
+
+        # Connect configs within a mouse
+        for mouse, mouse_df in this_wave.groupby('mouse'):
+            mouse_df = mouse_df.set_index('config').reindex(config_order)
+            ax.plot(range(len(config_order)), mouse_df['t'].values,
+                '-', color='gray', alpha=.5, lw=.75, clip_on=False)
+
+        # Pretty
+        ax.set_title(wave_name)
+        ax.set_xlabel('')
+        ax.set_ylabel('latency (ms)')
+        ax.set_ylim((1, 5))
+        ax.set_yticks((1, 3, 5))
+        my.plot.despine(ax)
+        ax.tick_params(axis='x', rotation=90)
+
+        # n text box
+        assert len(complete_mice) == 18
+        #~ ax.text(.95, .95, f'n = {len(complete_mice)}', transform=ax.transAxes,
+            #~ ha='right', va='top', size='small')    
     
+    # Savefig
+    f.savefig('figures/STRIP_PLOT_PEAK_LATENCY.svg')
+    f.savefig('figures/STRIP_PLOT_PEAK_LATENCY.png', dpi=300)
+
 plt.show()
