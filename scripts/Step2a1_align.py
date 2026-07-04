@@ -243,7 +243,7 @@ for date, mouse, recording in tqdm.tqdm(recording_metadata.index):
     heartbeats.index.name = 'beat'
 
     # Error check
-    assert len(heartbeats) >= 10:
+    assert len(heartbeats) >= 10
     
     # Extract (n_trials, n_timepoints, 3)
     sliced_l = []
