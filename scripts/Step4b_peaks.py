@@ -27,6 +27,14 @@ with open('filepaths.json') as fi:
 raw_data_directory = paths['raw_data_directory']
 output_directory = paths['output_directory']
 
+# For loading results from abranalysis
+abranalysis_path = os.path.expanduser(
+    '~/mnt/cuttlefish/chris/data/20251214_abr_data/output_20260704_10ms')
+
+
+## Load abranalysis peaks
+big_abra_peaks = pandas.read_pickle(os.path.join(abranalysis_path, 'big_abra_peaks'))
+
 
 ## Params
 sampling_rate = 16000
@@ -750,15 +758,20 @@ big_labeled_waves = big_labeled_waves.drop(
 print(big_labeled_waves.sort_values('cost').iloc[-30:])
 
 
+## Save picked peaks
+big_ridges.to_pickle(os.path.join(output_directory, 'big_ridges'))
+big_labeled_waves.to_pickle(os.path.join(output_directory, 'big_labeled_waves'))
+
+
 ## Plot
 PLOT_RIDGES = False
 PLOT_COEFS = False
 HISTOGRAM_WAVE_LATENCIES = True
-SWARM_PLOT_LATENCIES = False
+SWARM_PLOT_LATENCIES = True
 PLOT_PROPORTION_OF_WAVES_DETECTED = False
 PLOT_EXAMPLE_WATERFALL = False
 PLOT_EXAMPLE_HEATMAP = False
-PLOT_LOUDEST_PEAKS = False
+PLOT_LOUDEST_PEAKS = True
 STRIP_PLOT_PEAK_LATENCY = False
 
 ## Plot ridges
@@ -1005,6 +1018,40 @@ if SWARM_PLOT_LATENCIES:
     f.savefig('figures/SWARM_PLOT_LATENCIES.png', dpi=300)
     f.savefig('figures/SWARM_PLOT_LATENCIES.svg')
 
+if SWARM_PLOT_ABRA:
+    ## TODO: check that RL is dropped here
+    
+    ## Latency swarm plot: abranalysis peaks/troughs
+    # peaks/troughs are indices on the native 16 kHz grid over 0-10 ms
+    sampling_rate = 16000
+
+    # Melt peak+trough into one column, tag each with wave_name (W1p/W1n..)
+    sub = big_abra_peaks.reset_index()
+    peak_l = sub.assign(
+        wave_name='W' + sub['wave'].astype(str) + 'p',
+        idx=sub['peak'],
+        )
+    trough_l = sub.assign(
+        wave_name='W' + sub['wave'].astype(str) + 'n',
+        idx=sub['trough'],
+        )
+    sub = pandas.concat([peak_l, trough_l], ignore_index=True)
+
+    # Index -> latency
+    sub['latency_ms'] = sub['idx'] / sampling_rate * 1000
+
+    # Swarm/strip plot
+    f, ax = plt.subplots(figsize=(6, 8))
+    f.subplots_adjust(right=.8)
+    hue_order = sorted(sub['wave_name'].unique())
+    seaborn.stripplot(
+        data=sub, x='latency_ms', y='sound_level', hue='wave_name',
+        hue_order=hue_order,
+        order=sorted(sub['sound_level'].unique(), reverse=True),
+        orient='h', palette=wave_colors, size=2, jitter=0.3, ax=ax)
+    ax.set_xlabel('latency (ms)')
+    ax.legend(fontsize='small', loc='upper left', bbox_to_anchor=(1.02, 1))
+
 ## Proportion of waves detected
 if PLOT_PROPORTION_OF_WAVES_DETECTED:
     # Count waves detected
@@ -1172,6 +1219,80 @@ if PLOT_EXAMPLE_WATERFALL:
     f.savefig('figures/PLOT_EXAMPLE_WATERFALL.png', dpi=300)
     f.savefig('figures/PLOT_EXAMPLE_WATERFALL.svg')
 
+if PLOT_EXAMPLE_WATERFALL_ABRA:
+    # Vertical offset between adjacent levels
+    offset = 2.0
+    # onset is at column position 40 in df (columns -40..119)
+    onset_offset = 40
+    # Reshape ABRA peaks+troughs to long: col_idx (0-onset grid), wave_name
+    abra = big_abra_peaks.reset_index()
+    abra = abra[abra['channel'] != 'RL']
+    abra_pk = abra.assign(
+        wave_name='W' + abra['wave'].astype(str) + 'p', col_idx=abra['peak'])
+    abra_tr = abra.assign(
+        wave_name='W' + abra['wave'].astype(str) + 'n', col_idx=abra['trough'])
+    abra_long = pandas.concat([abra_pk, abra_tr], ignore_index=True)
+    abra_long = abra_long.dropna(subset=['col_idx'])
+    abra_long['col_idx'] = abra_long['col_idx'].astype(int)
+    abra_long = abra_long[abra_long['col_idx'] <= 119]
+    abra_long = abra_long.rename(columns={'sound_level': 'level'})
+    abra_long = abra_long.set_index(['mouse', 'channel', 'speaker_side'])
+    # Figure
+    f, axa = plt.subplots(
+        2, 2, sharex=True, sharey=True, figsize=(5.4, 3))
+    f.subplots_adjust(
+        left=.1, right=.85, top=.9, bottom=.14, hspace=.2, wspace=.2)
+    # Each config
+    for config in config_l:
+        channel, speaker_side = config
+        ax = axa[channel_l.index(channel), speaker_side_l.index(speaker_side)]
+        # Get ABR for this config
+        try:
+            abr = df.loc[example_mouse].loc[channel].loc[speaker_side]
+        except KeyError:
+            continue
+        # Time in ms
+        t = abr.columns.values / sampling_rate * 1000
+        # Plot each level, offset by its rank
+        levels = sorted(abr.index)
+        for n_level, level in enumerate(levels):
+            ax.plot(t, abr.loc[level].values + n_level * offset,
+                color='k', lw=.5)
+        # Get this config's ABRA peaks
+        try:
+            this_peaks = abra_long.loc[example_mouse].loc[channel].loc[
+                speaker_side]
+        except KeyError:
+            continue
+        # Overlay peaks/troughs colored by wave
+        for _, this_row in this_peaks.iterrows():
+            this_wave = this_row['wave_name']
+            if this_wave[:-1] not in legend_colors:
+                continue
+            color = wave_color(this_wave)
+            this_level = this_row['level']
+            if this_level not in levels:
+                continue
+            # col_idx is on 0-onset grid; df position is col_idx + onset_offset
+            this_t = this_row['col_idx'] / sampling_rate * 1000
+            this_y = (abr.loc[this_level].iloc[this_row['col_idx'] + onset_offset]
+                + levels.index(this_level) * offset)
+            ax.plot(this_t, this_y, marker='o', ls='none',
+                color=color, ms=3, mew=0)
+        # Pretty
+        ax.set_xlim((-1, 7))
+        ax.set_xticks((0, 2, 4, 6))
+        ax.set_yticks([])
+        my.plot.despine(ax, which=('left', 'top', 'right'))
+        if channel == channel_l[0]:
+            ax.set_title(col_title[speaker_side])
+        if speaker_side == speaker_side_l[0]:
+            ax.set_ylabel(channel)
+    wave_legend(axa[0, -1])
+    f.text(.51, .01, 'time (ms)', ha='center', va='bottom')
+    f.savefig('figures/PLOT_EXAMPLE_WATERFALL_ABRA.png', dpi=300)
+    f.savefig('figures/PLOT_EXAMPLE_WATERFALL_ABRA.svg')
+
 
 ## View 2: heatmap with ridges (as in PLOT_RIDGES)
 if PLOT_EXAMPLE_HEATMAP:
@@ -1254,6 +1375,7 @@ if PLOT_LOUDEST_PEAKS:
         left=.1, right=.85, top=.9, bottom=.14, hspace=.2, wspace=.2)
 
     # Each config
+    config_l = [('VL', 'L'), ('VL', 'R'), ('VR', 'L'), ('VR', 'R')]
     for config in config_l:
         channel, speaker_side = config
         ax = axa[channel_l.index(channel), speaker_side_l.index(speaker_side)]
@@ -1304,6 +1426,69 @@ if PLOT_LOUDEST_PEAKS:
     # Savefig
     f.savefig('figures/PLOT_LOUDEST_PEAKS.svg')
     f.savefig('figures/PLOT_LOUDEST_PEAKS.png', dpi=300)
+
+## Plot loudest-level ABR per mouse, peaks circled (abranalysis)
+if PLOT_LOUDEST_PEAKS_ABRA:
+    # Reshape abranalysis peaks to one row per peak+trough, add wave_name
+    sub = big_abra_peaks.reset_index()
+    sub = sub[sub['channel'] != 'RL']
+    abra_pk = sub.assign(
+        wave_name='W' + sub['wave'].astype(str) + 'p', timepoint=sub['peak'])
+    abra_tr = sub.assign(
+        wave_name='W' + sub['wave'].astype(str) + 'n', timepoint=sub['trough'])
+    abra_long = pandas.concat([abra_pk, abra_tr], ignore_index=True)
+    abra_long = abra_long.set_index(
+        ['mouse', 'channel', 'speaker_side', 'sound_level'])
+
+    abra_long = abra_long[abra_long['timepoint'] <= 119]
+
+    # Figure
+    f, axa = plt.subplots(
+        2, 2, sharex=True, sharey=True, figsize=(5.4, 3))
+    f.subplots_adjust(
+        left=.1, right=.85, top=.9, bottom=.14, hspace=.2, wspace=.2)
+    # Each config
+    config_l = [('VL', 'L'), ('VL', 'R'), ('VR', 'L'), ('VR', 'R')]
+    for config in config_l:
+        channel, speaker_side = config
+        ax = axa[channel_l.index(channel), speaker_side_l.index(speaker_side)]
+        # Each mouse
+        for mouse in sorted(df.index.get_level_values('mouse').unique()):
+            # Loudest-level trace for this mouse and config
+            try:
+                trace = df.loc[mouse].loc[channel].loc[speaker_side].loc[
+                    loudest_db]
+            except KeyError:
+                continue
+            t = trace.index.values / sampling_rate * 1000
+            ax.plot(t, trace.values, color='k', lw=.5, alpha=.3)
+            # Peaks at the loudest level
+            try:
+                peaks = abra_long.loc[mouse].loc[channel].loc[speaker_side].loc[loudest_db]
+            except KeyError:
+                continue
+            # Circle each peak, colored by wave
+            for _, peak in peaks.iterrows():
+                if pandas.isnull(peak['timepoint']):
+                    continue
+                color = wave_colors[peak['wave_name']]
+                peak_t = peak['timepoint'] / sampling_rate * 1000
+                ax.plot(peak_t, trace.loc[int(peak['timepoint'])],
+                    marker='o', ls='none', color=color, ms=3, mew=0)
+        # Pretty
+        ax.set_xlim((-1, 7))
+        ax.set_xticks((0, 2, 4, 6))
+        ax.set_yticks((-5, 0, 5))
+        my.plot.despine(ax)
+        if channel == channel_l[0]:
+            ax.set_title(col_title[speaker_side])
+        if speaker_side == speaker_side_l[0]:
+            ax.set_ylabel(channel)
+    wave_legend(axa[0, -1])
+    f.text(.51, .01, 'time (ms)', ha='center', va='bottom')
+    
+    f.savefig('figures/PLOT_LOUDEST_PEAKS_ABRA.svg')
+    f.savefig('figures/PLOT_LOUDEST_PEAKS_ABRA.png', dpi=300)
 
 if STRIP_PLOT_PEAK_LATENCY:
 
@@ -1362,5 +1547,89 @@ if STRIP_PLOT_PEAK_LATENCY:
     # Savefig
     f.savefig('figures/STRIP_PLOT_PEAK_LATENCY.svg')
     f.savefig('figures/STRIP_PLOT_PEAK_LATENCY.png', dpi=300)
+
+
+if PLOT_ABRA_VS_MINE:
+    ## Connected-pairs plot: my vs abra, cols=wave 1-5, top row peaks, bottom troughs
+    match_keys = ['mouse', 'channel', 'speaker_side', 'level', 'wave_name']
+
+    # My peaks and troughs (W1-5)
+    mine = big_ridges.reset_index()
+    mine = mine[match_keys + ['latency_ms']].rename(
+        columns={'latency_ms': 'mine_ms'})
+
+    # Abra: peaks -> W{n}p, troughs -> W{n}n
+    abra = big_abra_peaks.reset_index()
+    abra = abra[abra['channel'] != 'RL']
+    abra = abra.rename(columns={'sound_level': 'level'})
+    abra_pk = abra[abra['peak'] <= 119].assign(
+        wave_name='W' + abra['wave'].astype(str) + 'p',
+        abra_ms=abra['peak'] / sampling_rate * 1000)
+    abra_tr = abra[abra['trough'] <= 119].assign(
+        wave_name='W' + abra['wave'].astype(str) + 'n',
+        abra_ms=abra['trough'] / sampling_rate * 1000)
+    abra = pandas.concat([abra_pk, abra_tr])[match_keys + ['abra_ms']]
+
+    # Inner join
+    paired = mine.merge(abra, on=match_keys, how='inner')
+
+    # Grid: rows = peak(p)/trough(n), cols = wave 1-5
+    wave_n_l = [1, 2, 3, 4, 5]
+    kind_l = ['p', 'n']
+    f, axa = plt.subplots(
+        2, 5, sharex=True, sharey=True, figsize=(10, 5))
+    f.subplots_adjust(left=.08, right=.97, wspace=.3, hspace=.3)
+    for i_kind, this_kind in enumerate(kind_l):
+        for i_wave, this_n in enumerate(wave_n_l):
+            ax = axa[i_kind, i_wave]
+            this_wave = 'W' + str(this_n) + this_kind
+            this_paired = paired[paired['wave_name'] == this_wave]
+            for _, this_row in this_paired.iterrows():
+                ax.plot([0, 1], [this_row['mine_ms'], this_row['abra_ms']],
+                    color=wave_colors[this_wave], lw=.5, alpha=.5)
+            ax.set_xticks([0, 1])
+            if i_kind == 0:
+                ax.set_title('W' + str(this_n))
+            if i_wave == 0:
+                ax.set_ylabel(('peak' if this_kind == 'p' else 'trough')
+                    + '\nlatency (ms)')
+    for ax in axa[-1]:
+        ax.set_xticklabels(['mine', 'abra'])
+    f.savefig('figures/PLOT_ABRA_VS_MINE.png', dpi=300)
+    f.savefig('figures/PLOT_ABRA_VS_MINE.svg')
+
+
+if PLOT_ABRA_VS_MY_PEAK_COUNTS:
+    ## Count of labeled peaks+troughs found by each algorithm, per wave label
+    keep = ['W1p','W1n','W2p','W2n','W3p','W3n','W4p','W4n','W5p','W5n']
+
+    # Mine: all p and n labels for W1-5
+    mine_all = big_ridges.reset_index()
+    mine_all = mine_all[mine_all['wave_name'].isin(keep)]
+    mine_ct = mine_all.groupby('wave_name').size()
+
+    # Abra: peaks and troughs, W1-5
+    abra_all = big_abra_peaks.reset_index()
+    abra_all = abra_all[abra_all['channel'] != 'RL']
+    abra_pk = abra_all[abra_all['peak'] <= 119].assign(
+        wave_name='W' + abra_all['wave'].astype(str) + 'p')
+    abra_tr = abra_all[abra_all['trough'] <= 119].assign(
+        wave_name='W' + abra_all['wave'].astype(str) + 'n')
+    abra_ct = pandas.concat([abra_pk, abra_tr]).groupby('wave_name').size()
+
+    count_df = pandas.DataFrame({'mine': mine_ct, 'abra': abra_ct}).reindex(keep).fillna(0)
+
+    f, ax = plt.subplots(figsize=(6, 3))
+    f.subplots_adjust(bottom=.18)
+    x = np.arange(len(count_df))
+    ax.bar(x - .2, count_df['mine'], width=.4, label='mine', color='k')
+    ax.bar(x + .2, count_df['abra'], width=.4, label='abra', color='gray')
+    ax.set_xticks(x)
+    ax.set_xticklabels(count_df.index, rotation=90)
+    ax.set_ylabel('n')
+    ax.legend(frameon=False)
+    my.plot.despine(ax)
+    f.savefig('figures/PEAK_COUNTS.png', dpi=300)
+    f.savefig('figures/PEAK_COUNTS.svg')
 
 plt.show()
