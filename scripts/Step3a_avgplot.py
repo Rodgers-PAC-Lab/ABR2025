@@ -195,7 +195,7 @@ if GRAND_AVG_ABR_PLOT:
             len(label_l), mapname='inferno_r', start=0.15, stop=1)
         
         # Make handles
-        f, axa = plt.subplots(3, 2, sharex=True, sharey=True, figsize=(5.4, 4))
+        f, axa = plt.subplots(3, 2, sharex=True, sharey=True, figsize=(4.8, 4))
         f.subplots_adjust(
             left=.1, right=.9, top=.95, bottom=.12, hspace=0.06, wspace=0.2)
 
@@ -276,6 +276,7 @@ if GRAND_AVG_ABR_PLOT:
         with open(stats_filename) as fi:
             print(''.join(fi.readlines()))
 
+
 if GRAND_AVG_ABR_PLOT_PERI_HL:
     ## Plot the grand average ABR for each speaker_side
 
@@ -318,7 +319,7 @@ if GRAND_AVG_ABR_PLOT_PERI_HL:
             len(label_l), mapname='inferno_r', start=0.15, stop=1)
         
         # Make handles
-        f, axa = plt.subplots(3, 2, sharex=True, sharey=True, figsize=(5.4, 4))
+        f, axa = plt.subplots(3, 2, sharex=True, sharey=True, figsize=(4.8, 4))
         f.subplots_adjust(
             left=.1, right=.9, top=.95, bottom=.12, hspace=0.06, wspace=0.2)
 
@@ -430,7 +431,7 @@ if GRAND_AVG_IMSHOW:
         speaker_side_l = ['L', 'R']
 
         # Make handles
-        f, axa = plt.subplots(3, 2, sharex=True, sharey=True, figsize=(5.4, 4))
+        f, axa = plt.subplots(3, 2, sharex=True, sharey=True, figsize=(4.8, 4))
         f.subplots_adjust(
             left=.18, right=.98, top=.95, bottom=.12, hspace=0.2, wspace=0.2)
 
@@ -533,7 +534,7 @@ if GRAND_AVG_IMSHOW_PERI_HL:
         HL_type_l = ['bilateral', 'sham']
 
         # Make handles
-        f, axa = plt.subplots(3, 2, sharex=True, sharey=True, figsize=(5.4, 4))
+        f, axa = plt.subplots(3, 2, sharex=True, sharey=True, figsize=(4.8, 4))
         f.subplots_adjust(
             left=.18, right=.98, top=.95, bottom=.12, hspace=0.2, wspace=0.2)
 

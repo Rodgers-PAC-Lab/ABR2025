@@ -273,9 +273,9 @@ axa[1].set_xticklabels([0, 1, 2])
 # Scale bar
 legend_xval = t_start - .2
 axa[0].plot([legend_xval, legend_xval], [100, 400], 'k-', clip_on=False)
-axa[0].text(legend_xval, 250, f'300 {MU}V', ha='right', va='center', rotation=90)
+axa[0].text(legend_xval - .02, 250, f'300 {MU}V', ha='right', va='center', rotation=90)
 axa[1].plot([legend_xval, legend_xval], [10, 40], 'k-', clip_on=False)
-axa[1].text(legend_xval, 25, f'30 {MU}V', ha='right', va='center', rotation=90)
+axa[1].text(legend_xval - .02, 25, f'30 {MU}V', ha='right', va='center', rotation=90)
 
 # Labels
 label_xval = t_start - .1

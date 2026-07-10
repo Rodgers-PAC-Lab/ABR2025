@@ -281,7 +281,7 @@ if STRIP_PLOT_PEAK_HEIGHT:
     
     # Run anova
     to_anova = primary_peak.reset_index()
-    to_anova['ipsi'] = to_anova['channel'].str[0] == to_anova['speaker_side']
+    to_anova['ipsi'] = to_anova['channel'].str[1] == to_anova['speaker_side']
     aov_res = my.stats.anova(
         to_anova[to_anova['channel'] != 'RL'], 
         f'{metric} ~ channel + speaker_side + ipsi + mouse',
@@ -422,7 +422,7 @@ if STRIP_PLOT_PEAK_LATENCY:
     # for RV, because the effect where left is faster counteracts the effect
     # where ipsi is faster
     to_anova = primary_peak.reset_index()
-    to_anova['ipsi'] = to_anova['channel'].str[0] == to_anova['speaker_side']
+    to_anova['ipsi'] = to_anova['channel'].str[1] == to_anova['speaker_side']
     aov_res = my.stats.anova(
         to_anova[to_anova['channel'] != 'RL'], 
         f'{metric} ~ channel + speaker_side + ipsi + mouse',

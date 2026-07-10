@@ -240,14 +240,17 @@ if PLOT_SINGLE_TRIAL_ABR:
     # Slice out loudest only
     single_trial_abr = single_trial_abr.xs(loudest_db, level='label')
 
-    f, ax = plt.subplots(figsize=(3.75, 2.5))
-    f.subplots_adjust(bottom=.24, left=.18, right=.95, top=.89)
+    f, ax = plt.subplots(figsize=(3.5, 2.5))
+    f.subplots_adjust(bottom=.24, left=.25, right=.95, top=.89)
+
+    #~ f, ax = plt.subplots(figsize=(3.75, 2.5))
+    #~ f.subplots_adjust(bottom=.24, left=.18, right=.95, top=.89)
     ax.plot(
         single_trial_abr.columns.values / 16e3 * 1000,
         single_trial_abr.T * 1e6, 
         color='k', alpha=.05, lw=1)
     ax.set_xlabel('time from sound (ms)')
-    ax.set_ylabel(f'ABR ({MU}V)')
+    ax.set_ylabel(f'single trial\nABR ({MU}V)')
     ax.set_yticks((-8, 0, 8))
     ax.set_ylim((-8, 8))
     ax.set_xlim((-2.5, 7.5))
@@ -282,8 +285,11 @@ if PLOT_TRIAL_AVERAGED_ABR:
         len(label_l), mapname='inferno_r', start=0.15, stop=1)
 
     # Plot
-    f, ax = plt.subplots(figsize=(3.75, 2.5))
-    f.subplots_adjust(bottom=.24, left=.18, right=.95, top=.89)
+    f, ax = plt.subplots(figsize=(3.5, 2.5))
+    f.subplots_adjust(bottom=.24, left=.25, right=.95, top=.89)
+    
+    #~ f, ax = plt.subplots(figsize=(3.75, 2.5))
+    #~ f.subplots_adjust(bottom=.24, left=.18, right=.95, top=.89)
     for label in label_l:
         xtopl = trial_averaged_abr.columns.values / 16e3 * 1000
         ytopl = trial_averaged_abr.loc[label] * 1e6
@@ -336,8 +342,11 @@ if PLOT_POSITIVE_AND_NEGATIVE_CLICKS:
     trial_averaged_abr = to_agg.groupby('polarity').mean()
     
     # Plot
-    f, ax = plt.subplots(figsize=(3.75, 2.5))
-    f.subplots_adjust(bottom=.24, left=.18, right=.95, top=.89)
+    f, ax = plt.subplots(figsize=(3.5, 2.5))
+    f.subplots_adjust(bottom=.24, left=.25, right=.95, top=.89)
+
+    #~ f, ax = plt.subplots(figsize=(3.75, 2.5))
+    #~ f.subplots_adjust(bottom=.24, left=.18, right=.95, top=.89)
     ax.plot(
         trial_averaged_abr.columns.values / 16e3 * 1000,
         trial_averaged_abr.loc[True] * 1e6, 

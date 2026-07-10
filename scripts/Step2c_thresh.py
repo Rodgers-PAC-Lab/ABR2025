@@ -71,6 +71,17 @@ trial_counts = pandas.read_pickle(
     os.path.join(output_directory, 'trial_counts'))
 
 
+## Load abrpresto results
+threshold_df = pandas.read_pickle(
+    os.path.join(output_directory, 'abr_presto_threshold_df'))
+sigmoid_params_df = pandas.read_pickle(
+    os.path.join(output_directory, 'abr_presto_sigmoid_params_df'))
+xc0mean_df = pandas.read_pickle(
+    os.path.join(output_directory, 'abr_presto_xc0mean_df'))
+xc0std_df = pandas.read_pickle(
+    os.path.join(output_directory, 'abr_presto_xc0std_df'))
+
+
 ## Calculate the stdev(ABR) as a function of level
 # window=20 (1.25 ms) seems the best compromise between smoothing the whole
 # response and localizing it to a reasonably narrow window (and not extending
@@ -165,6 +176,7 @@ threshold_db = threshold_db.reindex(big_abr_evoked_rms.index)
 NORMALIZE_TO_WAVE1 = False
 WHICH_MICE = 'pre_HL'
 
+COMPARE_VS_ABRPRESTO = True
 PLOT_ABR_RMS_OVER_TIME = True
 PLOT_GROWTH_FUNCTIONS = True
 PLOT_ABR_POWER_VS_AGE = True
@@ -173,6 +185,104 @@ PLOT_ABR_POWER_VS_LEVEL_AFTER_HL = True
 PLOT_ABR_POWER_VS_LEVEL_EARLY_VS_LATE_AFTER_HL = True
 BASELINE_VS_N_TRIALS = True
 HISTOGRAM_EVOKED_RMS_BY_LEVEL = True
+
+if COMPARE_VS_ABRPRESTO:
+    ## Attach metadata to ABRpresto thresholds
+    this_thresh = threshold_df['threshold'].reset_index()
+
+    # speaker_side from recording_metadata (date, mouse, recording)
+    this_thresh = this_thresh.merge(
+        recording_metadata['speaker_side'].reset_index(),
+        on=['date', 'mouse', 'recording'])
+
+    # after_HL from experiment_metadata (date, mouse)
+    this_thresh = this_thresh.merge(
+        experiment_metadata[['date', 'mouse', 'after_HL']],
+        on=['date', 'mouse'])
+
+    # HL_type from mouse_metadata (mouse)
+    this_thresh = this_thresh.merge(
+        mouse_metadata[['mouse', 'HL_type']],
+        on='mouse')
+
+
+    ## Aggregate over date/recording, within mouse * after_HL (mean)
+    abrpresto_thresh = this_thresh.groupby(
+        ['HL_type', 'after_HL', 'mouse', 'channel', 'speaker_side'],
+        )['threshold'].mean()
+
+
+    ## Pair with mine, drop RL
+    paired = pandas.DataFrame({
+        'mine': threshold_db,
+        'abrpresto': abrpresto_thresh,
+        })
+
+    
+    # 4 panels: channel (VL/VR) x speaker_side (L/R)
+    # Color: bilateral+after_HL red, sham+after_HL blue, before_HL black
+    f, axa = plt.subplots(3, 2, figsize=(3.8, 3.5), sharey=True, sharex=True)
+    f.subplots_adjust(
+        wspace=.3, hspace=.4, left=.15, right=.95, bottom=.2, top=.92)
+
+    # Assign a color to each pair by condition
+    def pick_color(hl_type, after_hl):
+        if not after_hl:
+            return 'k'
+        elif hl_type == 'bilateral':
+            return 'r'
+        elif hl_type == 'sham':
+            return 'b'
+        else:
+            return 'gray'
+
+    # One panel per (channel, speaker_side)
+    for keys, this_panel in paired.groupby(['channel', 'speaker_side']):
+        this_channel, this_speaker_side = keys
+        ax = axa[
+            ['VL', 'VR', 'RL'].index(this_channel),
+            ['L', 'R'].index(this_speaker_side)]
+
+        # One connected pair per row
+        for row_keys, this_pair in this_panel.groupby(
+                ['HL_type', 'after_HL', 'mouse']):
+            this_hl_type, this_after_hl, this_mouse = row_keys
+            this_color = pick_color(this_hl_type, this_after_hl)
+            ax.plot(
+                [0, 1], [this_pair['mine'].iloc[0], this_pair['abrpresto'].iloc[0]],
+                marker='o', color=this_color, alpha=.4, markersize=4)
+
+        # Panel title and axes
+        if ax in axa[0]:
+            ax.set_title(this_speaker_side)
+        if ax in axa[:, 0]:
+            ax.set_ylabel(this_channel, rotation=0)
+        ax.set_xticks([0, 1])
+        ax.set_xticklabels(['ours', 'ABRpresto'], rotation=45)
+        ax.set_xlim(-.8, 1.8)
+        my.plot.despine(ax)
+
+    # Savefig
+    f.savefig('figures/COMPARE_VS_ABRPRESTO.svg')
+    f.savefig('figures/COMPARE_VS_ABRPRESTO.png', dpi=300)    
+
+
+    ## Diff hist
+    # Distribution of mine - ABRpresto, all pairs pooled
+    this_diff = paired['mine'] - paired['abrpresto']
+
+    f, ax = my.plot.figure_1x1_standard()
+    ax.hist(this_diff.values, bins=np.linspace(-20, 20, 51))
+    ax.axvline(0, color='k', linestyle='-', linewidth=.75)
+    ax.set_xlabel('threshold difference (dB)\n(ours - ABRpresto)')
+    ax.set_ylim(bottom=0)
+    ax.set_yticks([])
+    ax.set_xlim((-20, 20))
+    ax.set_xticks((-20, 0, 20))
+    my.plot.despine(ax, which=('left', 'top', 'right'))    
+
+    f.savefig('figures/COMPARE_VS_ABRPRESTO__hist.svg')
+    f.savefig('figures/COMPARE_VS_ABRPRESTO__hist.png', dpi=300)    
 
 if PLOT_ABR_RMS_OVER_TIME:
     ## Plot the smoothed rms of the ABR over time by condition
@@ -1065,7 +1175,8 @@ if BASELINE_VS_N_TRIALS:
         'trial_count').to_frame().join(med_baseline_rms.rename('noise'))
 
     # Plot
-    f, ax = my.plot.figure_1x1_standard()
+    f, ax = plt.subplots(figsize=(3.5, 2.5))
+    f.subplots_adjust(bottom=.24, left=.25, right=.95, top=.89)
     ax.plot(
         np.log10(joined['trial_count']), 
         np.log10(joined['noise'] * 1e9), # log(nV)
@@ -1079,7 +1190,7 @@ if BASELINE_VS_N_TRIALS:
     ax.set_yticklabels((0.03, 0.1, 0.3))
     ax.axis('scaled')
     ax.set_ylim((1.4, 2.6))
-    ax.set_xlim((1.2, 2.8))
+    ax.set_xlim((1.1, 2.9))
 
     # Labels
     ax.set_ylabel(f'baseline ({MU}V rms)')
