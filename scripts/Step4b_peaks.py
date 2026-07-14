@@ -44,28 +44,28 @@ minimum_ridge_length = 5
 # starting points for labeling waves
 # Each tuple is (slope_us_per_db, latency_ms)
 wave_centroids_pos = pandas.DataFrame.from_dict({
-    'W0p': (-4.3, 0.6),
-    'W1p': (-5.1, 1.36),
+    'W0p': (-4.5, 0.6),
+    'W1p': (-5.2, 1.36),
     'W2p': (-8.7, 2.3),
-    'W3p': (-8.2, 3.3),
-    'W4p': (-12.9, 4.2),
-    'W5p': (-13.5, 5.2),
-    'W6p': (-8, 6.1),
-    'W7p': (-9, 7.0),
+    'W3p': (-8.3, 3.2),
+    'W4p': (-13.0, 4.2),
+    'W5p': (-13.2, 5.2),
+    'W6p': (-7.9, 6.1),
+    'W7p': (-8.5, 7.0),
     }, 
     orient='index', 
     columns=['slope_us_per_db', 'latency_ms_at_ref_level'])
 wave_centroids_pos.index.name = 'wave_name'
 
 wave_centroids_neg = pandas.DataFrame.from_dict({
-    'W0n': (-3.7, 0.9),
+    'W0n': (-3.9, 0.9),
     'W1n': (-6.4, 1.8),
-    'W2n': (-9, 2.7),
-    'W3n': (-9, 3.7),
-    'W4n': (-15, 4.7),
-    'W5n': (-12, 5.7),
-    'W6n': (-9, 6.5),
-    'W7n': (-10, 7.4),
+    'W2n': (-8.8, 2.7),
+    'W3n': (-9.1, 3.6),
+    'W4n': (-15.3, 4.7),
+    'W5n': (-11.5, 5.7),
+    'W6n': (-8.8, 6.4),
+    'W7n': (-10.4, 7.2),
     }, 
     orient='index', 
     columns=['slope_us_per_db', 'latency_ms_at_ref_level'])
@@ -109,36 +109,27 @@ recording_metadata = recording_metadata.set_index(
 
 ## Load previous results
 # Load results of Step2b_avg
-big_abrs = pandas.read_pickle(
-    os.path.join(output_directory, 'big_abrs'))
-averaged_abrs_by_mouse = pandas.read_pickle(
-    os.path.join(output_directory, 'averaged_abrs_by_mouse'))
+#~ big_abrs = pandas.read_pickle(
+    #~ os.path.join(output_directory, 'big_abrs'))
+#~ averaged_abrs_by_mouse = pandas.read_pickle(
+    #~ os.path.join(output_directory, 'averaged_abrs_by_mouse'))
 averaged_abrs_by_date = pandas.read_pickle(
     os.path.join(output_directory, 'averaged_abrs_by_date'))
 trial_counts = pandas.read_pickle(
     os.path.join(output_directory, 'trial_counts'))
 
 # Loudest dB
-loudest_db = big_abrs.index.get_level_values('label').max()
+loudest_db = averaged_abrs_by_date.index.get_level_values('label').max()
     
 
-## Set up averaged_abrs_by_mouse for ridge tracing
-# Keep only after_HL == False
-# TODO: extend this to include post-HL mice
-big_abrs = big_abrs.xs(
-    False, level='after_HL').droplevel('HL_type')
-averaged_abrs_by_mouse = averaged_abrs_by_mouse.xs(
-    False, level='after_HL').droplevel('HL_type')
-averaged_abrs_by_date = averaged_abrs_by_date.xs(
-    False, level='after_HL').droplevel('HL_type')
+## Set up data for ridge tracing
+# Include only vertex-ear channels
+averaged_abrs_by_date = averaged_abrs_by_date.reindex(
+    ['VL', 'VR'], level='channel')
+averaged_abrs_by_date = averaged_abrs_by_date.sort_index()
 
 # Convert to uV
-averaged_abrs_by_mouse = averaged_abrs_by_mouse * 1e6
-
-# Include only vertex-ear channels
-averaged_abrs_by_mouse = averaged_abrs_by_mouse.reindex(
-    ['VL', 'VR'], level='channel')
-averaged_abrs_by_mouse = averaged_abrs_by_mouse.sort_index()
+averaged_abrs_by_date = averaged_abrs_by_date * 1e6
 
 
 ## Load abranalysis peaks
@@ -179,8 +170,10 @@ big_abra_peaks['latency_ms'] = (
 
 ## Trace ridges for all recordings
 # Groupby each heatmap
-group_levels = ['mouse', 'channel', 'speaker_side']
-groupby = averaged_abrs_by_mouse.groupby(group_levels)
+group_levels = [
+    'HL_type', 'after_HL', 'n_experiment', 'mouse', 'channel', 'speaker_side',
+    ]
+groupby = averaged_abrs_by_date.groupby(group_levels)
 
 # Iterate over recordings
 ridges_l = []
@@ -223,11 +216,11 @@ big_ridges['latency_ms'] = big_ridges['timepoint'] / sampling_rate * 1000
 # Form a slicing MultiIndex that contains the right timepoint
 slicing_midx = big_ridges['timepoint'].reset_index().rename(
     columns={'level': 'label'})[
-    ['mouse', 'channel', 'speaker_side', 'label', 'timepoint']]
+    ['HL_type', 'after_HL', 'n_experiment', 'mouse', 'channel', 'speaker_side', 'label', 'timepoint']]
 slicing_midx = pandas.MultiIndex.from_frame(slicing_midx)
 
 # Slice to get height
-heights = averaged_abrs_by_mouse.stack().loc[slicing_midx]
+heights = averaged_abrs_by_date.stack().loc[slicing_midx]
 
 # Store height - the index has the wrong levels but the order is correct
 big_ridges['height'] = heights.values
@@ -266,10 +259,16 @@ for recording_keys, recording_ridges in big_ridges.groupby(group_levels):
         ['sign', 'n_ridge'])
     
     # Label the ridges - pos and neg separately
+    # Of W1p, W1n, W2p and W4p (the ones we care about), the hardest one is 
+    # Cacti_225 VL-L W4p with a cost of 0.14
+    # There are a variety of assignments between 0.14 and 0.2 but not waves
+    # we care about (so include them)
+    # Then nothing above 0.253 (except for out-of-order assignments that get
+    # dropped anyway)
     labeled_pos = ABR2025.peak_picking.label_ridges(
-        recording_ridge_coefs.loc['pos'], wave_centroids_pos)
+        recording_ridge_coefs.loc['pos'], wave_centroids_pos, max_cost=0.15)
     labeled_neg = ABR2025.peak_picking.label_ridges(
-        recording_ridge_coefs.loc['neg'], wave_centroids_neg)
+        recording_ridge_coefs.loc['neg'], wave_centroids_neg, max_cost=0.15)
 
     # Concat
     labeled = pandas.concat(
@@ -297,7 +296,8 @@ big_ridges_with_order['order'] = big_ridges_with_order['wave_num'] * 2 + (
     big_ridges_with_order['wave_name'].str[-1] == 'n').astype(int)
 
 # Find out of order waves
-group_levels = ['mouse', 'channel', 'speaker_side', 'level']
+group_levels = [
+    'HL_type', 'after_HL', 'n_experiment', 'mouse', 'channel', 'speaker_side', 'level']
 bad_l = []
 for keys, subdf in big_ridges_with_order.groupby(group_levels):
     
@@ -325,13 +325,13 @@ out_of_order = pandas.concat(bad_l, ignore_index=True)
 # Construct a MultiIndex to unlabel big_labeled_waves and big_ridges
 midx = pandas.MultiIndex.from_frame(
     out_of_order[
-    ['mouse', 'channel', 'speaker_side', 'sign', 'n_ridge', 'wave_name']
+    ['HL_type', 'after_HL', 'n_experiment', 'mouse', 'channel', 'speaker_side', 'sign', 'n_ridge', 'wave_name']
     ].drop_duplicates())
 
 # Unlabel - this two-step process avoids ChainedAssignmentError
 if len(midx) > 0:
     print(f'warning: unlabeling {len(midx)} waves')
-    print(midx)
+    print(midx.to_frame(index=False).to_string())
 midx = midx.droplevel('wave_name')
 big_ridges.loc[
     my.misc.slice_df_by_some_levels(big_ridges, midx).index, 
@@ -351,276 +351,346 @@ big_labeled_waves.to_pickle(os.path.join(output_directory, 'big_labeled_waves'))
 
 
 ## Plot
-PLOT_RIDGES_ACROSS_MICE = False
-PLOT_COEFS = False
-HISTOGRAM_WAVE_LATENCIES = False
-STRIP_PLOT_LATENCIES = False
+PLOT_RIDGES_ACROSS_MICE = True
+HISTOGRAM_WAVE_LATENCIES = True
+STRIP_PLOT_LATENCIES = True
 STRIP_PLOT_ABRA_LATENCIES = False
-PLOT_EXAMPLE_WATERFALL = False
+PLOT_EXAMPLE_WATERFALL = True
 PLOT_EXAMPLE_WATERFALL_ABRA = False
-PLOT_EXAMPLE_HEATMAP = False
-PLOT_PEAKS_AT_LOUDEST_ACROSS_MICE_VRL_ONLY = False
+PLOT_EXAMPLE_HEATMAP = True
+PLOT_PEAKS_AT_LOUDEST_ACROSS_MICE_VRL_ONLY = True
 PLOT_ABRA_PEAKS_AT_LOUDEST_ACROSS_MICE_VRL_ONLY = False
-PLOT_PEAK_LATENCY_BY_WAVE_AND_CONFIG = False
+PLOT_PEAK_LATENCY_BY_WAVE_AND_CONFIG = True
 PLOT_PEAK_HEIGHT_BY_WAVE_AND_CONFIG = True
 PLOT_LATENCY_ABRA_VS_OURS = False
-
+PLOT_PEAK_GROWTH_FUNCTIONS = True
+PLOT_LABELING_DIAGNOSTIC = True
+PLOT_DIAGNOSTIC_HEATMAP_ONE_RECORDING = True
 
 if PLOT_RIDGES_ACROSS_MICE:
     """Plot ABR heatmaps with detected ridges overlaid for many mice
     
     This is a supplemental figure to show how the ridge-tracing algorithm
     handles variability in the ABR.
-    """
     
-    ## Set up figure layout
-    # Which mice to include -- subset because it's too many otherwise
-    mouse_l = sorted(averaged_abrs_by_mouse.index.get_level_values('mouse').unique())[::3]
+    Separately plots by after_HL * n_experiment
+    """
     
     # channel * speaker_side configurations - RL is not analyzed
     config_l = [('VL', 'L'), ('VL', 'R'), ('VR', 'L'), ('VR', 'R')]
-
-    # Set a common time base
-    t = averaged_abrs_by_mouse.columns.values / sampling_rate * 1000
 
     # Color cycle for ridges
     cmap = plt.get_cmap('tab10')
 
     
-    ## Figure handles
-    f, axa = plt.subplots(
-        len(config_l), len(mouse_l), sharex=True, sharey=True,
-        figsize=(0.9 * len(mouse_l), 3.5))
-    f.subplots_adjust(
-        left=.04, right=.98, wspace=0.1, hspace=0.1, bottom=.05, top=.9)
-
-    
-    ## Iterate over configs
-    for config in config_l:
+    ## One figure per n_experiment * after_HL
+    for n_experiment in [0, 1]:
+        for after_HL in [False, True]:
         
-        # Parse config
-        channel, speaker_side = config
-
-        # Each mouse
-        for mouse in mouse_l:
-            
-            # Get ax
-            ax = axa[config_l.index(config), mouse_l.index(mouse)]
-
-            # Get ABR for this mouse
-            try:
-                abr_heatmap = averaged_abrs_by_mouse.loc[mouse].loc[channel].loc[speaker_side]
-            except KeyError:
-                continue
-
-            # Imshow heatmap
-            im = my.plot.imshow(
-                abr_heatmap, 
-                ax=ax, 
-                cmap='gray', 
-                x=abr_heatmap.columns.values / sampling_rate * 1000,
-                y=abr_heatmap.index.values,
-                alpha=.9,
-                origin='lower',
-                )
-
-            # Slice this stack's ridges and wave labels
-            try:
-                this_ridges = big_ridges.loc[mouse].loc[channel].loc[speaker_side]
-            except KeyError:
-                this_ridges = None
-
-            # Plot if ridges exist
-            if this_ridges is not None:
+            # Slice this after_HL and n_experiment
+            this_abrs = averaged_abrs_by_date.xs(
+                after_HL, level='after_HL').xs(n_experiment, level='n_experiment')
+            this_ridges_all = big_ridges.xs(
+                after_HL, level='after_HL').xs(n_experiment, level='n_experiment')
                 
-                # Iterate over ridges
-                for (sign, n_ridge), ridge in this_ridges.groupby(['sign', 'n_ridge']):
+            # Pre-HL: HL_type doesn't matter, drop it
+            if not after_HL:
+                this_abrs = this_abrs.droplevel('HL_type')
+                this_ridges_all = this_ridges_all.droplevel('HL_type')
+            
+            # Which mice to include -- subset because it's too many otherwise
+            mouse_l = sorted(
+                this_abrs.index.get_level_values('mouse').unique()
+                )
+            
+            
+            ## Figure handles
+            f, axa = plt.subplots(
+                len(config_l), len(mouse_l), sharex=True, sharey=True,
+                figsize=(0.9 * len(mouse_l), 3.5))
+            f.subplots_adjust(
+                left=.04, right=.98, wspace=0.1, hspace=0.1, bottom=.05, top=.9)
 
-                    # Undo multi-indexing
-                    ridge = ridge.reset_index()
+            
+            ## Iterate over configs
+            for config in config_l:
+                
+                # Parse config
+                channel, speaker_side = config
 
-                    # Get wave name
-                    wave_name = ridge['wave_name'].unique().item()
+                # Each mouse
+                for mouse in mouse_l:
                     
-                    # Get color by wave name
-                    if pandas.isnull(wave_name):
-                        color = 'k'
-                    else:
-                        color = wave_colors[wave_name]
+                    # Get ax
+                    ax = axa[config_l.index(config), mouse_l.index(mouse)]
 
-                    # Plot
-                    ridge_t = ridge['timepoint'].values / sampling_rate * 1000
-                    ax.plot(
-                        ridge_t, 
-                        ridge['level'].values, 
-                        ls='-', color=color, lw=.8)
+                    # Get ABR for this mouse (xs is order-independent)
+                    try:
+                        abr_heatmap = this_abrs.xs(mouse, level='mouse').xs(
+                            channel, level='channel').xs(
+                            speaker_side, level='speaker_side')
+                    except KeyError:
+                        continue
+                    
+                    # Drop residual HL_type (post-HL) so index is just level
+                    if 'HL_type' in abr_heatmap.index.names:
+                        abr_heatmap = abr_heatmap.droplevel('HL_type')
 
-            # Pretty
-            im.set_clim((-3, 3))
-            ax.set_xlim((-2, 7))
-            ax.set_xticks([])
-            ax.set_yticks([])
+                    # Imshow heatmap
+                    im = my.plot.imshow(
+                        abr_heatmap, 
+                        ax=ax, 
+                        cmap='gray', 
+                        x=abr_heatmap.columns.values / sampling_rate * 1000,
+                        y=abr_heatmap.index.values,
+                        alpha=.9,
+                        origin='lower',
+                        )
 
-            # Column titles on top row
-            if ax in axa[0]:
-                ax.set_title(mouse, ha='center', va='bottom', size='xx-small')
+                    # Slice this stack's ridges and wave labels
+                    try:
+                        this_ridges = this_ridges_all.xs(mouse, level='mouse').xs(
+                            channel, level='channel').xs(
+                            speaker_side, level='speaker_side')
+                    except KeyError:
+                        this_ridges = None
+                    
+                    # Drop residual HL_type (post-HL)
+                    if this_ridges is not None and (
+                            'HL_type' in this_ridges.index.names):
+                        this_ridges = this_ridges.droplevel('HL_type')
 
-            # Row labels on left
-            if ax in axa[:, 0]:
-                ax.set_ylabel(f'{channel} {speaker_side}', rotation=0,
-                    ha='right', va='center')
+                    # Plot if ridges exist
+                    if this_ridges is not None:
+                        
+                        # Iterate over ridges
+                        for (sign, n_ridge), ridge in this_ridges.groupby(['sign', 'n_ridge']):
 
-    # Savefig
-    f.savefig('figures/PLOT_RIDGES_ACROSS_MICE.png', dpi=300)
-    f.savefig('figures/PLOT_RIDGES_ACROSS_MICE.svg')    
+                            # Undo multi-indexing
+                            ridge = ridge.reset_index()
+
+                            # Get wave name
+                            wave_name = ridge['wave_name'].unique().item()
+                            
+                            # Get color by wave name
+                            if pandas.isnull(wave_name):
+                                color = 'k'
+                            else:
+                                color = wave_colors[wave_name]
+
+                            # Plot
+                            ridge_t = ridge['timepoint'].values / sampling_rate * 1000
+                            ax.plot(
+                                ridge_t, 
+                                ridge['level'].values, 
+                                ls='-', color=color, lw=.8)
+
+                    # Pretty
+                    im.set_clim((-3, 3))
+                    ax.set_xlim((-2, 7))
+                    ax.set_xticks([])
+                    ax.set_yticks([])
+
+                    # Column titles on top row
+                    if ax in axa[0]:
+                        ax.set_title(mouse, ha='center', va='bottom', size='xx-small')
+
+                    # Row labels on left
+                    if ax in axa[:, 0]:
+                        ax.set_ylabel(f'{channel} {speaker_side}', rotation=0,
+                            ha='right', va='center')
+
+            # Savefig
+            suffix = f"{'postHL' if after_HL else 'preHL'}_exp{n_experiment}"
+            f.savefig(f'figures/PLOT_RIDGES_ACROSS_MICE_{suffix}.png', dpi=300)
+            f.savefig(f'figures/PLOT_RIDGES_ACROSS_MICE_{suffix}.svg')
 
     
 if HISTOGRAM_WAVE_LATENCIES:
-    ## Histogram the wave times separately by level
-    # Levels to plot
-    levels = sorted(big_ridges.index.get_level_values('level').unique())[::-1]
+    """Histogram the wave times separately by level"""
+    
+    # Three figures: pre-HL, post-HL bilateral, post-HL sham.
+    # Pooled across n_experiment.
 
     # Bin by sample
-    bins = averaged_abrs_by_mouse.columns.values / sampling_rate * 1000
+    bins = averaged_abrs_by_date.columns.values / sampling_rate * 1000
     
     # Which waves to include
     include_waves = [
         'W1p', 'W1n', 'W2p', 'W2n', 'W3p', 'W3n', 'W4p', 'W4n', 'W5p', 'W5n']
     
-    # One ax per level
-    f, axa = plt.subplots(
-        len(levels), 1, 
-        sharex=True, sharey=True, 
-        figsize=(4, 4.7)
-        )
-    f.subplots_adjust(left=.15, bottom=.13, top=.95, right=.95)
+    # Conditions: (suffix, sliced big_ridges)
+    condition_l = [
+        ('preHL', 
+            big_ridges.xs(False, level='after_HL')),
+        ('postHL_bilateral', 
+            big_ridges.xs(True, level='after_HL').xs('bilateral', level='HL_type')),
+        ('postHL_sham', 
+            big_ridges.xs(True, level='after_HL').xs('sham', level='HL_type')),
+        ]
 
-    # Plot each
-    for ax, level in zip(axa, levels):
-        # Slice
-        level_ridges = big_ridges.xs(level, level='level')
+    # All levels (from full dataset, so every figure has the same rows)
+    all_levels = sorted(
+        averaged_abrs_by_date.index.get_level_values('label').unique())[::-1]
+
+    # One figure per condition
+    for suffix, this_ridges in condition_l:
         
-        # Group by wave name
-        grouped = level_ridges.groupby('wave_name', dropna=False)
+        # Levels to plot (fixed across conditions)
+        levels = all_levels
         
-        # Hist each
-        for wave_name, this_wave_df in grouped:
+        # One ax per level
+        f, axa = plt.subplots(
+            len(levels), 1, 
+            sharex=True, sharey=True, 
+            figsize=(4, 4.7)
+            )
+        f.subplots_adjust(left=.15, bottom=.13, top=.95, right=.95)
+
+        # Plot each
+        for ax, level in zip(axa, levels):
             
-            # Skip if we don't want to plot this one
-            if wave_name not in include_waves + [np.nan]:
-                continue
+            # Slice (may be empty if no peaks at this level)
+            try:
+                level_ridges = this_ridges.xs(level, level='level')
+            except KeyError:
+                level_ridges = None
             
-            # Color for this wave
-            if pandas.isnull(wave_name):
-                # There are very few unlabeled waves, so just skip them
-                continue
+            # only hist if we have data
+            if level_ridges is not None:
+                
+                # group
+                grouped = level_ridges.groupby('wave_name', dropna=False)
+                
+                # Iterate over wave
+                for wave_name, this_wave_df in grouped:
+                
+                    # Skip if we don't want to plot this one
+                    if wave_name not in include_waves + [np.nan]:
+                        continue
+                    
+                    # Color for this wave
+                    if pandas.isnull(wave_name):
+                        # There are very few unlabeled waves, so just skip them
+                        continue
+                    else:
+                        color = wave_colors[wave_name]
+                        histtype='stepfilled' if wave_name.endswith('p') else 'step'
+                    
+                    # Hist
+                    ax.hist(
+                        this_wave_df['timepoint'] / sampling_rate * 1000,
+                        bins=bins, 
+                        color=color, 
+                        histtype=histtype,
+                        alpha=1, 
+                        lw=1,
+                        )
+            
+            # ylabel
+            if ax is axa[0] or ax is axa[-1]:
+                ax.set_ylabel(level, rotation=0, va='center', ha='right')
+            
+            # Despine
+            if ax is axa[-1]:
+                my.plot.despine(ax, which=('left', 'top', 'right'))
             else:
-                color = wave_colors[wave_name]
-                histtype='stepfilled' if wave_name.endswith('p') else 'step'
-            
-            # Hist
-            ax.hist(
-                this_wave_df['timepoint'] / sampling_rate * 1000,
-                bins=bins, 
-                color=color, 
-                histtype=histtype,
-                alpha=1, 
-                lw=1,
-                )
+                my.plot.despine(ax, which=('left', 'top', 'right', 'bottom'))
+            ax.set_yticks([])
+
+        # Pretty
+        axa[len(axa) // 2].set_ylabel('sound level (dB SPL)', labelpad=20)
+        axa[-1].set_xlabel('time from click (ms)')
+        ax.set_xlim((1, 7))
+        ax.set_xticks((1, 2, 3, 4, 5, 6, 7))
         
-        # ylabel
-        if ax is axa[0] or ax is axa[-1]:
-            ax.set_ylabel(level, rotation=0, va='center', ha='right')
         
-        # Despine
-        if ax is axa[-1]:
-            my.plot.despine(ax, which=('left', 'top', 'right'))
-        else:
-            my.plot.despine(ax, which=('left', 'top', 'right', 'bottom'))
-        ax.set_yticks([])
-
-    # Pretty
-    axa[6].set_ylabel('sound level (dB SPL)', labelpad=20)
-    axa[-1].set_xlabel('time from click (ms)')
-    ax.set_xlim((1, 7))
-    ax.set_xticks((1, 2, 3, 4, 5, 6, 7))
-
-
-    ## Write out stats
-    stats_filename = 'figures/STATS__HISTOGRAM_WAVE_LATENCIES'
-    with open(stats_filename, 'w') as fi:
-        fi.write(stats_filename + '\n')
-        fi.write(f"n = {len(big_ridges.groupby('mouse').size())} mice\n")
-        fi.write(
-            'ABRs were first meaned within mouse, then peaks picked, '
-            'then histogrammed by latency for each wave name\n')
-    
-    # Echo
-    with open(stats_filename) as fi:
-        print(''.join(fi.readlines()))    
-    
-    
-    ## Savefig
-    f.savefig('figures/HISTOGRAM_WAVE_LATENCIES.png', dpi=300)
-    f.savefig('figures/HISTOGRAM_WAVE_LATENCIES.svg')
+        ## Savefig
+        f.savefig(f'figures/HISTOGRAM_WAVE_LATENCIES_{suffix}.png', dpi=300)
+        f.savefig(f'figures/HISTOGRAM_WAVE_LATENCIES_{suffix}.svg')
 
 
 if STRIP_PLOT_LATENCIES:
-    ## Strip plot the latencies (alternative to HISTOGRAM_WAVE_LATENCIES)
-    # Levels to plot
-    levels = sorted(big_ridges.index.get_level_values('level').unique())[::-1]
+    """Strip plot the latencies (alternative to HISTOGRAM_WAVE_LATENCIES)
+    
+    Four figures are generated:
+    - first_rec_VRL_only - only shows first recording per mouse, only shows
+      VR-L, thus there is only one point per mouse * wave * level
+    - preHL - pools over recordings, experiments, channels, and speaker side
+      Showing all the points like this is useful to look for outlierse
+    - postHL_bilateral, post_HL_sham - like preHL for the other groups
+    """
 
     # Which waves to include
     include_waves = [
         'W1p', 'W1n', 'W2p', 'W2n', 'W3p', 'W3n', 'W4p', 'W4n', 'W5p', 'W5n']
     
-    # Slice out waves to plot
-    topl = big_ridges[big_ridges['wave_name'].isin(include_waves)]
+    # Conditions: (suffix, sliced big_ridges)
+    condition_l = [
+        ('first_rec_VRL_only',
+            big_ridges.xs(False, level='after_HL').xs(
+                0, level='n_experiment').xs(
+                'VR', level='channel').xs(
+                'L', level='speaker_side')),
+        ('preHL', 
+            big_ridges.xs(False, level='after_HL')),
+        ('postHL_bilateral', 
+            big_ridges.xs(True, level='after_HL').xs('bilateral', level='HL_type')),
+        ('postHL_sham', 
+            big_ridges.xs(True, level='after_HL').xs('sham', level='HL_type')),
+        ]
     
-    # A single ax with each swarm at its own ypos
-    f, ax = plt.subplots(figsize=(4, 4.7))
-    f.subplots_adjust(left=.15, bottom=.13, top=.95, right=.95)
-
-    # Strip plot the latency
-    seaborn.stripplot(
-        data=topl, x='latency_ms', y='level', hue='wave_name', 
-        hue_order=include_waves, order=levels, orient='h', 
-        palette=wave_colors, size=2, alpha=1, jitter=0.3, 
-        ax=ax,
-        )
-
-    # Pretty
-    ax.get_legend().set_visible(False)
-    my.plot.despine(ax)
-    ax.set_yticks((0, len(levels) - 1))
-    ax.set_yticklabels((levels[0], levels[-1]))
-    ax.set_xlabel('time from click (ms)')
-    ax.set_ylabel('sound level (dB SPL)')
-    ax.set_xlim((1, 7))
-    ax.set_xticks((1, 2, 3, 4, 5, 6, 7))
-
-
-    ## Write out stats
-    stats_filename = 'figures/STATS__STRIP_PLOT_LATENCIES'
-    with open(stats_filename, 'w') as fi:
-        fi.write(stats_filename + '\n')
-        fi.write(f"n = {len(topl.groupby('mouse').size())} mice\n")
-        fi.write(
-            'ABRs were first meaned within mouse, then peaks picked, '
-            'then strip-plotted by latency for each wave name\n')
+    # All levels (from full dataset, so every figure has the same rows)
+    all_levels = sorted(
+        averaged_abrs_by_date.index.get_level_values('label').unique())[::-1]
     
-    # Echo
-    with open(stats_filename) as fi:
-        print(''.join(fi.readlines()))    
+    # One figure per condition
+    for suffix, this_ridges in condition_l:
         
+        # Levels to plot (fixed across conditions)
+        levels = all_levels
+        
+        # Slice out waves to plot
+        topl = this_ridges[this_ridges['wave_name'].isin(include_waves)]
 
-    ## Savefig
-    f.savefig('figures/STRIP_PLOT_LATENCIES.png', dpi=300)
-    f.savefig('figures/STRIP_PLOT_LATENCIES.svg')
+        # Assert max one point per wave per mouse per level
+        if suffix == 'first_rec_VRL_only':
+            assert topl.groupby(
+                ['mouse', 'level', 'wave_name']).size().max() <= 1        
+        
+        # A single ax with each swarm at its own ypos
+        f, ax = plt.subplots(figsize=(4, 4.7))
+        f.subplots_adjust(left=.15, bottom=.13, top=.95, right=.95)
+
+        # Strip plot the latency
+        seaborn.stripplot(
+            data=topl, x='latency_ms', y='level', hue='wave_name', 
+            hue_order=include_waves, order=levels, orient='h', 
+            palette=wave_colors, size=2, alpha=1, jitter=0.3, 
+            ax=ax,
+            )
+
+        # Pretty
+        ax.get_legend().set_visible(False)
+        my.plot.despine(ax)
+        ax.set_yticks((0, len(levels) - 1))
+        ax.set_yticklabels((levels[0], levels[-1]))
+        ax.set_xlabel('time from click (ms)')
+        ax.set_ylabel('sound level (dB SPL)')
+        ax.set_xlim((1, 7))
+        ax.set_xticks((1, 2, 3, 4, 5, 6, 7))
+
+
+        ## Savefig
+        f.savefig(f'figures/STRIP_PLOT_LATENCIES_{suffix}.png', dpi=300)
+        f.savefig(f'figures/STRIP_PLOT_LATENCIES_{suffix}.svg')
 
 
 if STRIP_PLOT_ABRA_LATENCIES:
-    ## Strip plot the latencies from ABRA for comparison
+    """Strip plot the latencies from ABRA for comparison
+    
+    TODO: re-run ABRA separately by recording, both pre and post HL
+    """
 
     # Levels to plot
     levels = sorted(big_ridges.index.get_level_values('level').unique())[::-1]
@@ -672,20 +742,28 @@ if STRIP_PLOT_ABRA_LATENCIES:
 
 
 if PLOT_EXAMPLE_WATERFALL:
+    """Example ABR, waterfall plot, labeled peaks"""
     
-    ## Example ABR, waterfall plot, labeled peaks
+    # Pre-HL, first experiment
+    this_abrs = averaged_abrs_by_date.xs(
+        False, level='after_HL').xs(0, level='n_experiment')
+    this_ridges = big_ridges.xs(
+        False, level='after_HL').xs(0, level='n_experiment')
+    
     # Choose example
     example_mouse = 'Cat_227'
     channel = 'VR'
     speaker_side = 'L'
 
     # Get ABR for this config
-    example_abr = averaged_abrs_by_mouse.loc[
-        example_mouse].loc[channel].loc[speaker_side]
+    example_abr = this_abrs.xs(example_mouse, level='mouse').xs(
+        channel, level='channel').xs(
+        speaker_side, level='speaker_side').droplevel('HL_type')
 
     # Get this config's labeled ridges
-    example_ridges = big_ridges.loc[example_mouse].loc[channel].loc[
-        speaker_side]
+    example_ridges = this_ridges.xs(example_mouse, level='mouse').xs(
+        channel, level='channel').xs(
+        speaker_side, level='speaker_side').droplevel('HL_type')
 
     # Time range to plot
     start_timepoint = int(np.rint(-.001 * sampling_rate))
@@ -772,7 +850,11 @@ if PLOT_EXAMPLE_WATERFALL:
 
 
 if PLOT_EXAMPLE_WATERFALL_ABRA:
-    ## Example ABR, waterfall plot, labeled peaks
+    """Example waterfall with ABRA peaks
+    
+    This one is broken because averaged_abrs_by_mouse is no longer loaded,
+    need to recompute ABRA peaks on the data used here    
+    """
     # Choose example
     example_mouse = 'Cat_227'
     channel = 'VR'
@@ -871,7 +953,13 @@ if PLOT_EXAMPLE_WATERFALL_ABRA:
 
 
 if PLOT_EXAMPLE_HEATMAP:
-    ## Like EXAMPLE_WATERFALL but as a heatmap
+    """Like EXAMPLE_WATERFALL but as a heatmap"""
+    
+    # Pre-HL, first experiment
+    this_abrs = averaged_abrs_by_date.xs(
+        False, level='after_HL').xs(0, level='n_experiment')
+    this_ridges = big_ridges.xs(
+        False, level='after_HL').xs(0, level='n_experiment')
 
     # Choose example
     example_mouse = 'Cat_227'
@@ -879,12 +967,14 @@ if PLOT_EXAMPLE_HEATMAP:
     speaker_side = 'L'
 
     # Get ABR for this config
-    example_abr = averaged_abrs_by_mouse.loc[
-        example_mouse].loc[channel].loc[speaker_side]
+    example_abr = this_abrs.xs(example_mouse, level='mouse').xs(
+        channel, level='channel').xs(
+        speaker_side, level='speaker_side').droplevel('HL_type')
 
     # Get this config's labeled ridges
-    example_ridges = big_ridges.loc[example_mouse].loc[channel].loc[
-        speaker_side]
+    example_ridges = this_ridges.xs(example_mouse, level='mouse').xs(
+        channel, level='channel').xs(
+        speaker_side, level='speaker_side').droplevel('HL_type')
 
     # Time range to plot
     start_timepoint = int(np.rint(-.001 * sampling_rate))
@@ -941,85 +1031,108 @@ if PLOT_EXAMPLE_HEATMAP:
     # Savefig
     f.savefig('figures/PLOT_EXAMPLE_HEATMAP.png', dpi=300)
     f.savefig('figures/PLOT_EXAMPLE_HEATMAP.svg')
-
+    
 
 if PLOT_PEAKS_AT_LOUDEST_ACROSS_MICE_VRL_ONLY:
-    ## Plot VR-L ABR at loudest level across mice with peaks circled
-    # VR-L only just for simplicity and to match the previous examples
-
-    # Mice to plot
-    mouse_l = sorted(
-        averaged_abrs_by_mouse.index.get_level_values('mouse').unique())
-
-    # Levels to plot
-    levels = sorted(
-        averaged_abrs_by_mouse.index.get_level_values('label').unique())
-
+    """Plot VR-L ABR at loudest level across mice with peaks circled
+    
+    Four conditions:
+    - first_rec_VRL_only : for an example with one line per mouse
+    - preHL : all vertex-ear pre-HL (possibly multiple recording per mouse)
+    - postHL_bilateral, postHL_sham : analogous to preHL
+    """
+    
     # Which waves to include
     include_waves = [
         'W1p', 'W1n', 'W2p', 'W2n', 'W3p', 'W3n', 'W4p', 'W4n', 'W5p', 'W5n']
     
-    # Make figure handles
-    f, ax = my.plot.figure_1x1_standard()
-    channel = 'VR'
-    speaker_side = 'L'
-
-    # Iterate over mice (lines)
-    for mouse in mouse_l:
-
-        # Slice ABR for this mouse at the loudest level
-        this_abr = averaged_abrs_by_mouse.loc[
-            (mouse, channel, speaker_side, loudest_db)]
+    # Conditions: (suffix, dict of level->value to slice)
+    condition_l = [
+        ('first_rec_VRL_only', dict(after_HL=False, n_experiment=0, channel='VR', speaker_side='L')),
+        ('preHL', dict(after_HL=False)),
+        ('postHL_bilateral', dict(after_HL=True, HL_type='bilateral')),
+        ('postHL_sham', dict(after_HL=True, HL_type='sham')),
+        ]
+    
+    # One figure per condition
+    for suffix, sel in condition_l:
         
-        # Slice peaks from this mouse at the loudest level
-        this_peaks = big_ridges.loc[(mouse, channel, speaker_side)].xs(
-            loudest_db, level='level')
+        # Slice abrs and ridges to this condition
+        this_abrs = averaged_abrs_by_date
+        this_ridges = big_ridges
+        for k, v in sel.items():
+            this_abrs = this_abrs.xs(v, level=k)
+            this_ridges = this_ridges.xs(v, level=k)
         
-        # Plot the ABR trace for this mouse
-        ax.plot(
-            this_abr.index.values / sampling_rate * 1000, 
-            this_abr.values, 
-            color='k', lw=.5, alpha=.5)
+        # Levels that identify a recording (everything except label)
+        rec_levels = [n for n in this_abrs.index.names if n != 'label']
+        
+        # Make figure handles
+        f, ax = my.plot.figure_1x1_standard()
 
-        # Iterate over each peak
-        for (sign, n_ridge) in this_peaks.index:
-
-            # Color by wave name
-            wave_name = this_peaks.loc[(sign, n_ridge), 'wave_name']
-            if wave_name not in include_waves:
+        # Iterate over recordings (lines)
+        for rec_keys, rec_abr in this_abrs.groupby(rec_levels):
+            
+            # Drop recording levels, leaving label on the index
+            rec_abr = rec_abr.droplevel(rec_levels)
+            
+            # Slice ABR at the loudest level
+            try:
+                this_abr = rec_abr.loc[loudest_db]
+            except KeyError:
                 continue
-            color = wave_colors[wave_name]
-
-            # Time in ms of this peak
-            timepoint = this_peaks.loc[(sign, n_ridge), 'timepoint']
             
-            # Convert to ms
-            t = timepoint / sampling_rate * 1000
-            
-            # Voltage of this peak
-            y = this_abr.loc[timepoint]
-            
-            # Plot
+            # Plot the ABR trace for this recording
             ax.plot(
-                [t], [y], 
-                marker='o', color=color, ms=4, alpha=.75, clip_on=False)
-    
+                this_abr.index.values / sampling_rate * 1000, 
+                this_abr.values, 
+                color='k', lw=.5, alpha=.5)
 
-    ## Pretty
-    ax.set_xlim((-1, 7))
-    ax.set_xticks((0, 2, 4, 6))
-    ax.set_yticks((-3, 0, 3))
-    my.plot.despine(ax)
-    ax.set_xlabel('time from click (ms)')
-    ax.set_ylabel(f'ABR ({MU}V)')
-    
-    # Savefig
-    f.savefig('figures/PLOT_PEAKS_AT_LOUDEST_ACROSS_MICE_VRL_ONLY.svg')
-    f.savefig('figures/PLOT_PEAKS_AT_LOUDEST_ACROSS_MICE_VRL_ONLY.png', dpi=300)
+            # Slice peaks from this recording at the loudest level
+            try:
+                this_peaks = this_ridges.loc[rec_keys].xs(
+                    loudest_db, level='level')
+            except KeyError:
+                continue
+        
+            # Iterate over each peak
+            for (sign, n_ridge) in this_peaks.index:
 
+                # Color by wave name
+                wave_name = this_peaks.loc[(sign, n_ridge), 'wave_name']
+                if wave_name not in include_waves:
+                    continue
+                color = wave_colors[wave_name]
+
+                # Time in ms of this peak
+                timepoint = this_peaks.loc[(sign, n_ridge), 'timepoint']
+                
+                # Convert to ms
+                t = timepoint / sampling_rate * 1000
+                
+                # Voltage of this peak
+                y = this_abr.loc[timepoint]
+                
+                # Plot
+                ax.plot(
+                    [t], [y], 
+                    marker='o', color=color, ms=4, alpha=.75, clip_on=False)
+        
+
+        ## Pretty
+        ax.set_xlim((-1, 7))
+        ax.set_xticks((0, 2, 4, 6))
+        ax.set_yticks((-3, 0, 3))
+        my.plot.despine(ax)
+        ax.set_xlabel('time from click (ms)')
+        ax.set_ylabel(f'ABR ({MU}V)')
+        
+        # Savefig
+        f.savefig(f'figures/PLOT_PEAKS_AT_LOUDEST_ACROSS_MICE_VRL_ONLY_{suffix}.svg')
+        f.savefig(f'figures/PLOT_PEAKS_AT_LOUDEST_ACROSS_MICE_VRL_ONLY_{suffix}.png', dpi=300)
 
 if PLOT_ABRA_PEAKS_AT_LOUDEST_ACROSS_MICE_VRL_ONLY:
-    ## Plot VR-L ABR at loudest level across mice with ABRA peaks
+    """Currently broken till we re-run ABR on individual recordings"""
 
     # Mice to plot
     mouse_l = sorted(
@@ -1097,275 +1210,327 @@ if PLOT_ABRA_PEAKS_AT_LOUDEST_ACROSS_MICE_VRL_ONLY:
 
 
 if PLOT_PEAK_LATENCY_BY_WAVE_AND_CONFIG:
-    ## Connected pairs strip plot of the latency for each wave * config
-    # Waves in subplots, channel * speaker_side on x-axis
+    """Connected pairs strip plot of the latency for each wave * config
+    
+    Waves in subplots, channel * speaker_side on x-axis.
+    Four conditions:
+    - first_rec : one recording per mouse; mouse is the paired unit; stats run
+    - preHL, postHL_bilateral, postHL_sham : pooled, recording is the unit,
+      separate lines per recording, no stats
+    """
 
     # Which waves to include
     wave_l = ['W1p', 'W1n', 'W2p', 'W4p']
 
-    # Extract labeled peaks at the loudest level only
-    loudest = big_ridges.dropna(subset='wave_name').xs(
-        loudest_db, level='level').copy()
-    loudest = loudest.reset_index()
-
-    # Form "config" as a single ordered label for the x-axis
+    # Config order for the x-axis
     config_order = ['VL L', 'VL R', 'VR L', 'VR R']
-    loudest['config'] = loudest['channel'] + ' ' + loudest['speaker_side']
 
-    # Also add an ipsi column
-    loudest['ipsi'] = loudest['speaker_side'] == loudest['channel'].str[1]
+    # Conditions: (suffix, sel dict, run_stats)
+    condition_l = [
+        ('first_rec', dict(after_HL=False, n_experiment=0), True),
+        ('preHL', dict(after_HL=False), False),
+        ('postHL_bilateral', dict(after_HL=True, HL_type='bilateral'), False),
+        ('postHL_sham', dict(after_HL=True, HL_type='sham'), False),
+        ]
 
-    # One subplot per wave, in this order
-    f, axa = plt.subplots(
-        1, len(wave_l), 
-        sharex=True, sharey=True,
-        figsize=(8, 2.5)
-        )
-    f.subplots_adjust(bottom=.24, left=.1, right=.95, top=.89, wspace=.4)
+    for suffix, sel, run_stats in condition_l:
 
-    # Iterate ove waves (subplots)
-    aov_pvals_l = []
-    tt_pvals_l = []
-    stats_data_l = []
-    stats_keys_l = []
-    for wave_name, ax in zip(wave_l, axa):
-        
-        # Slice this wave
-        this_wave = loudest[loudest['wave_name'] == wave_name].copy()
+        # Slice big_ridges to this condition
+        this_ridges = big_ridges
+        for k, v in sel.items():
+            this_ridges = this_ridges.xs(v, level=k)
 
-        # Assert that we have data from all mice on all waves
-        assert (this_wave.groupby('mouse')['config'].nunique() == 4).all()
+        # Extract labeled peaks at the loudest level only
+        loudest = this_ridges.dropna(subset='wave_name').xs(
+            loudest_db, level='level').copy()
+        loudest = loudest.reset_index()
 
-        # Strip plot the latency for each config
-        seaborn.stripplot(
-            this_wave, x='config', y='latency_ms',
-            marker='$\circ$', color='k', alpha=.5,
-            order=config_order, ax=ax)
+        # Form "config" as a single ordered label for the x-axis
+        loudest['config'] = loudest['channel'] + ' ' + loudest['speaker_side']
 
-        # Connect configs within a mouse
-        for mouse, mouse_df in this_wave.groupby('mouse'):
-            mouse_df = mouse_df.set_index('config').reindex(config_order)
-            ax.plot(
-                range(len(config_order)), 
-                mouse_df['latency_ms'].values,
-                ls='-', color='gray', alpha=.5, lw=.75, clip_on=False,
-                )
+        # Also add an ipsi column
+        loudest['ipsi'] = loudest['speaker_side'] == loudest['channel'].str[1]
 
-        # Fancy x-axis
-        ax.set_xticks([0, 1, 2, 3])
-        ax.set_xticklabels(['L', 'R', 'L', 'R'], rotation=0)
-        ax.text(0.5, 0, 'VL', ha='center', va='center')
-        ax.text(2.5, 0, 'VR', ha='center', va='center')
+        # Replicate unit (recording); collapses to per-mouse for first_rec
+        unit_levels = [
+            c for c in ['HL_type', 'after_HL', 'n_experiment', 'mouse']
+            if c in loudest.columns]
 
-        # Pretty
-        ax.set_title(wave_name)
-        ax.set_xlabel('')
-        ax.set_ylabel('latency (ms)')
-        ax.set_ylim((1, 5))
-        ax.set_yticks((1, 3, 5))
-        my.plot.despine(ax)
-        
-        # Stats
-        this_wave['latency_centered'] = (
-            this_wave['latency_ms'] - this_wave['latency_ms'].mean())
-        aov = my.stats.anova(
-            this_wave, 'latency_centered ~ ipsi + speaker_side + mouse')
-        aov_pvals_l.append(aov['pvals'])
-        
-        # Post hoc
-        to_test = this_wave.set_index(
-            ['channel', 'ipsi', 'mouse'])['latency_ms'].unstack('mouse').T
-        ttp_VL = scipy.stats.ttest_rel(
-            to_test[('VL', True)].values, to_test[('VL', False)].values
-            ).pvalue
-        ttp_VR = scipy.stats.ttest_rel(
-            to_test[('VR', True)].values, to_test[('VR', False)].values
-            ).pvalue
-        tt_pvals_l.append(pandas.Series({'VL': ttp_VL, 'VR': ttp_VR}))
-        stats_data_l.append(to_test)
-        stats_keys_l.append(wave_name)
-    
-    # Concat stats
-    big_aov = pandas.concat(aov_pvals_l, keys=stats_keys_l, names=['wave'])
-    big_tt = pandas.concat(tt_pvals_l, keys=stats_keys_l, names=['wave'])
-    big_stats_data = pandas.concat(stats_data_l, keys=stats_keys_l, names=['wave'])
+        # One subplot per wave, in this order
+        f, axa = plt.subplots(
+            1, len(wave_l),
+            sharex=True, sharey=True,
+            figsize=(8, 2.5)
+            )
+        f.subplots_adjust(bottom=.24, left=.1, right=.95, top=.89, wspace=.4)
 
-    # Compute stats
-    n_configs_by_mouse = big_stats_data.groupby('mouse').size()
-    assert (n_configs_by_mouse == 4).all()
-    n_mice = len(n_configs_by_mouse)
-    
-    # Mean latency and diff
-    mean_latency = big_stats_data.groupby('wave').mean().T.groupby('ipsi').mean().T
-    mean_latency['diff'] = mean_latency.loc[:, True] - mean_latency.loc[:, False]
-    mean_latency = mean_latency.T
+        # Stats accumulators (first_rec only)
+        aov_pvals_l = []
+        tt_pvals_l = []
+        stats_data_l = []
+        stats_keys_l = []
 
+        # Iterate over waves (subplots)
+        for wave_name, ax in zip(wave_l, axa):
 
-    ## Write out stats
-    # Write out stats file
-    stats_filename = 'figures/STATS__PLOT_PEAK_LATENCY_BY_WAVE_AND_CONFIG'
-    with open(stats_filename, 'w') as fi:
-        fi.write(stats_filename + '\n')
-        fi.write(f"n = {n_mice} mice\n")
-        fi.write(f"AOV by wave:\n{big_aov.unstack('wave')}\n")
-        fi.write(f"paired t-test by wave:\n{big_tt.unstack('wave')}\n")
-        fi.write(f"mean latency by wave and ipsi:\n{mean_latency}\n")
-    
-    # Echo
-    with open(stats_filename) as fi:
-        print(''.join(fi.readlines()))    
-        
-    
-    ## Savefig
-    f.savefig('figures/PLOT_PEAK_LATENCY_BY_WAVE_AND_CONFIG.svg')
-    f.savefig('figures/PLOT_PEAK_LATENCY_BY_WAVE_AND_CONFIG.png', dpi=300)
+            # Slice this wave
+            this_wave = loudest[loudest['wave_name'] == wave_name].copy()
+
+            # Strip plot the latency for each config
+            seaborn.stripplot(
+                this_wave, x='config', y='latency_ms',
+                marker='$\circ$', color='k', alpha=.5,
+                order=config_order, ax=ax)
+
+            # Connect configs within a recording
+            for unit_keys, unit_df in this_wave.groupby(unit_levels):
+                unit_df = unit_df.set_index('config').reindex(config_order)
+                ax.plot(
+                    range(len(config_order)),
+                    unit_df['latency_ms'].values,
+                    ls='-', color='gray', alpha=.5, lw=.75, clip_on=False,
+                    )
+
+            # Fancy x-axis
+            ax.set_xticks([0, 1, 2, 3])
+            ax.set_xticklabels(['L', 'R', 'L', 'R'], rotation=0)
+            ax.text(0.5, 0, 'VL', ha='center', va='center')
+            ax.text(2.5, 0, 'VR', ha='center', va='center')
+
+            # Pretty
+            ax.set_title(wave_name)
+            ax.set_xlabel('')
+            ax.set_ylabel('latency (ms)')
+            ax.set_ylim((1, 5))
+            ax.set_yticks((1, 3, 5))
+            my.plot.despine(ax)
+
+            # Stats (first_rec only, mouse is the paired unit)
+            if run_stats:
+                # Assert that we have data from all mice on all configs
+                assert (this_wave.groupby('mouse')['config'].nunique() == 4).all()
+
+                this_wave['latency_centered'] = (
+                    this_wave['latency_ms'] - this_wave['latency_ms'].mean())
+                aov = my.stats.anova(
+                    this_wave, 'latency_centered ~ ipsi + speaker_side + mouse')
+                aov_pvals_l.append(aov['pvals'])
+
+                # Post hoc
+                to_test = this_wave.set_index(
+                    ['channel', 'ipsi', 'mouse'])['latency_ms'].unstack('mouse').T
+                ttp_VL = scipy.stats.ttest_rel(
+                    to_test[('VL', True)].values, to_test[('VL', False)].values
+                    ).pvalue
+                ttp_VR = scipy.stats.ttest_rel(
+                    to_test[('VR', True)].values, to_test[('VR', False)].values
+                    ).pvalue
+                tt_pvals_l.append(pandas.Series({'VL': ttp_VL, 'VR': ttp_VR}))
+                stats_data_l.append(to_test)
+                stats_keys_l.append(wave_name)
+
+        # Stats output (first_rec only)
+        if run_stats:
+            big_aov = pandas.concat(aov_pvals_l, keys=stats_keys_l, names=['wave'])
+            big_tt = pandas.concat(tt_pvals_l, keys=stats_keys_l, names=['wave'])
+            big_stats_data = pandas.concat(
+                stats_data_l, keys=stats_keys_l, names=['wave'])
+
+            n_configs_by_mouse = big_stats_data.groupby('mouse').size()
+            assert (n_configs_by_mouse == 4).all()
+            n_mice = len(n_configs_by_mouse)
+
+            mean_latency = big_stats_data.groupby('wave').mean().T.groupby('ipsi').mean().T
+            mean_latency['diff'] = mean_latency.loc[:, True] - mean_latency.loc[:, False]
+            mean_latency = mean_latency.T
+
+            stats_filename = 'figures/STATS__PLOT_PEAK_LATENCY_BY_WAVE_AND_CONFIG'
+            with open(stats_filename, 'w') as fi:
+                fi.write(stats_filename + '\n')
+                fi.write(f"n = {n_mice} mice\n")
+                fi.write(f"AOV by wave:\n{big_aov.unstack('wave')}\n")
+                fi.write(f"paired t-test by wave:\n{big_tt.unstack('wave')}\n")
+                fi.write(f"mean latency by wave and ipsi:\n{mean_latency}\n")
+            with open(stats_filename) as fi:
+                print(''.join(fi.readlines()))
+
+        ## Savefig
+        f.savefig(f'figures/PLOT_PEAK_LATENCY_BY_WAVE_AND_CONFIG_{suffix}.svg')
+        f.savefig(f'figures/PLOT_PEAK_LATENCY_BY_WAVE_AND_CONFIG_{suffix}.png', dpi=300)
 
 
 if PLOT_PEAK_HEIGHT_BY_WAVE_AND_CONFIG:
-    ## Connected pairs strip plot of the height for each wave * config
-    # Waves in subplots, channel * speaker_side on x-axis
+    """Connected pairs strip plot of the height for each wave * config
+    
+    Waves in subplots, channel * speaker_side on x-axis.
+    Four conditions:
+    - first_rec : one recording per mouse; mouse is the paired unit; stats run
+    - preHL, postHL_bilateral, postHL_sham : pooled, recording is the unit,
+      separate lines per recording, no stats
+    """
 
     # Which waves to include
     wave_l = ['W1p', 'W1n', 'W2p', 'W4p']
 
-    # Extract labeled peaks at the loudest level only
-    loudest = big_ridges.dropna(subset='wave_name').xs(
-        loudest_db, level='level').copy()
-    loudest = loudest.reset_index()
-
-    # Form "config" as a single ordered label for the x-axis
+    # Config order for the x-axis
     config_order = ['VL L', 'VL R', 'VR L', 'VR R']
-    loudest['config'] = loudest['channel'] + ' ' + loudest['speaker_side']
 
-    # Also add an ipsi column
-    loudest['ipsi'] = loudest['speaker_side'] == loudest['channel'].str[1]
+    # Conditions: (suffix, sel dict, run_stats)
+    condition_l = [
+        ('first_rec', dict(after_HL=False, n_experiment=0), True),
+        ('preHL', dict(after_HL=False), False),
+        ('postHL_bilateral', dict(after_HL=True, HL_type='bilateral'), False),
+        ('postHL_sham', dict(after_HL=True, HL_type='sham'), False),
+        ]
 
-    # One subplot per wave, in this order
-    f, axa = plt.subplots(
-        1, len(wave_l), 
-        sharex=True, sharey=True,
-        figsize=(8, 2.5)
-        )
-    f.subplots_adjust(bottom=.24, left=.1, right=.95, top=.89, wspace=.4)
+    for suffix, sel, run_stats in condition_l:
 
-    # Iterate ove waves (subplots)
-    aov_pvals_l = []
-    aov_fit_l = []
-    tt_pvals_l = []
-    stats_data_l = []
-    stats_keys_l = []
-    for wave_name, ax in zip(wave_l, axa):
-        
-        # Slice this wave
-        this_wave = loudest[loudest['wave_name'] == wave_name].copy()
+        # Slice big_ridges to this condition
+        this_ridges = big_ridges
+        for k, v in sel.items():
+            this_ridges = this_ridges.xs(v, level=k)
 
-        # Invert if trough
-        if wave_name.endswith('n'):
-            this_wave['height'] = -this_wave['height']
+        # Extract labeled peaks at the loudest level only
+        loudest = this_ridges.dropna(subset='wave_name').xs(
+            loudest_db, level='level').copy()
+        loudest = loudest.reset_index()
 
-        # Assert that we have data from all mice on all waves
-        assert (this_wave.groupby('mouse')['config'].nunique() == 4).all()
+        # Form "config" as a single ordered label for the x-axis
+        loudest['config'] = loudest['channel'] + ' ' + loudest['speaker_side']
 
-        # Strip plot the latency for each config
-        seaborn.stripplot(
-            this_wave, x='config', y='height',
-            marker='$\circ$', color='k', alpha=.5,
-            order=config_order, ax=ax)
+        # Also add an ipsi column
+        loudest['ipsi'] = loudest['speaker_side'] == loudest['channel'].str[1]
 
-        # Connect configs within a mouse
-        for mouse, mouse_df in this_wave.groupby('mouse'):
-            mouse_df = mouse_df.set_index('config').reindex(config_order)
-            ax.plot(
-                range(len(config_order)), 
-                mouse_df['height'].values,
-                ls='-', color='gray', alpha=.5, lw=.75,
-                )
+        # Replicate unit (recording); collapses to per-mouse for first_rec
+        unit_levels = [
+            c for c in ['HL_type', 'after_HL', 'n_experiment', 'mouse']
+            if c in loudest.columns]
 
-        # Fancy x-axis
-        ax.set_xticks([0, 1, 2, 3])
-        ax.set_xticklabels(['L', 'R', 'L', 'R'], rotation=0)
-        ax.text(
-            0.5, -0.25, 'VL', ha='center', va='center', 
-            transform=ax.get_xaxis_transform())
-        ax.text(
-            2.5, -0.25, 'VR', ha='center', va='center', 
-            transform=ax.get_xaxis_transform())
-
-        # Pretty
-        ax.set_title(wave_name)
-        ax.set_xlabel('')
-        ax.set_ylabel(f'peak height ({MU}V)')
-        ax.set_ylim((-0.2, 6))
-        ax.set_yticks((0, 3, 6))
-        my.plot.despine(ax)
-        
-        # Stats
-        aov = my.stats.anova(
-            this_wave, 'height ~ channel + ipsi + speaker_side + mouse')
-        aov_pvals_l.append(aov['pvals'])
-        aov_fit_l.append(
-            aov['fit'].loc[~aov['fit'].index.str.startswith('fit_mouse')]
+        # One subplot per wave, in this order
+        f, axa = plt.subplots(
+            1, len(wave_l),
+            sharex=True, sharey=True,
+            figsize=(8, 2.5)
             )
-        
-        # Post hoc
-        to_test = this_wave.set_index(
-            ['channel', 'ipsi', 'speaker_side', 'mouse'])['height'].unstack('mouse').T
-        ttp_VL = scipy.stats.ttest_rel(
-            to_test[('VL', True)].values, to_test[('VL', False)].values
-            ).pvalue
-        ttp_VR = scipy.stats.ttest_rel(
-            to_test[('VR', True)].values, to_test[('VR', False)].values
-            ).pvalue
-        tt_pvals_l.append(pandas.Series({'VL': ttp_VL, 'VR': ttp_VR}))
-        stats_data_l.append(to_test)
-        stats_keys_l.append(wave_name)
+        f.subplots_adjust(bottom=.24, left=.1, right=.95, top=.89, wspace=.4)
 
-    # Concat stats
-    big_aov_pvals = pandas.concat(aov_pvals_l, keys=stats_keys_l, names=['wave'])
-    big_aov_fit = pandas.concat(aov_fit_l, keys=stats_keys_l, names=['wave'])
-    big_tt = pandas.concat(tt_pvals_l, keys=stats_keys_l, names=['wave'])
-    big_stats_data = pandas.concat(stats_data_l, keys=stats_keys_l, names=['wave'])
+        # Stats accumulators (first_rec only)
+        aov_pvals_l = []
+        aov_fit_l = []
+        tt_pvals_l = []
+        stats_data_l = []
+        stats_keys_l = []
 
-    # Compute stats
-    n_configs_by_mouse = big_stats_data.groupby('mouse').size()
-    assert (n_configs_by_mouse == 4).all()
-    n_mice = len(n_configs_by_mouse)
+        # Iterate over waves (subplots)
+        for wave_name, ax in zip(wave_l, axa):
 
-    # Sigstr
-    big_tt_sigstr = big_tt.apply(my.stats.pvalue_to_significance_string)
-    big_aov_sigstr = big_aov_pvals.apply(my.stats.pvalue_to_significance_string)
-    
-    # Mean height and diff
-    mean_height = big_stats_data.groupby('wave').mean().T.groupby('ipsi').mean().T
-    mean_height['diff'] = mean_height.loc[:, True] - mean_height.loc[:, False]
-    mean_height = mean_height.T
+            # Slice this wave
+            this_wave = loudest[loudest['wave_name'] == wave_name].copy()
 
+            # Invert if trough
+            if wave_name.endswith('n'):
+                this_wave['height'] = -this_wave['height']
 
-    ## Write out stats
-    # Write out stats file
-    stats_filename = 'figures/STATS__PLOT_PEAK_HEIGHT_BY_WAVE_AND_CONFIG'
-    with open(stats_filename, 'w') as fi:
-        fi.write(stats_filename + '\n')
-        fi.write(f"n = {n_mice} mice\n")
-        fi.write(f"mean heights:\n{big_stats_data.groupby('wave').mean().mean(axis=1)}\n")
-        fi.write(f"AOV pvals by wave:\n{big_aov_pvals.unstack('wave')}\n")
-        fi.write(f"AOV fit by wave:\n{big_aov_fit.unstack('wave')}\n")
-        fi.write(f"AOV sig by wave:\n{big_aov_sigstr.unstack('wave')}\n")
-        fi.write(f"paired t-test p-value by wave:\n{big_tt.unstack('wave')}\n")
-        fi.write(f"paired t-test sigstr by wave:\n{big_tt_sigstr.unstack('wave')}\n")
-        fi.write(f"mean height by wave and ipsi:\n{mean_height}\n")
-    
-    # Echo
-    with open(stats_filename) as fi:
-        print(''.join(fi.readlines()))    
-        
-    
-    ## Savefig
-    f.savefig('figures/PLOT_PEAK_HEIGHT_BY_WAVE_AND_CONFIG.svg')
-    f.savefig('figures/PLOT_PEAK_HEIGHT_BY_WAVE_AND_CONFIG.png', dpi=300)
+            # Strip plot the height for each config
+            seaborn.stripplot(
+                this_wave, x='config', y='height',
+                marker='$\circ$', color='k', alpha=.5,
+                order=config_order, ax=ax)
+
+            # Connect configs within a recording
+            for unit_keys, unit_df in this_wave.groupby(unit_levels):
+                unit_df = unit_df.set_index('config').reindex(config_order)
+                ax.plot(
+                    range(len(config_order)),
+                    unit_df['height'].values,
+                    ls='-', color='gray', alpha=.5, lw=.75,
+                    )
+
+            # Fancy x-axis
+            ax.set_xticks([0, 1, 2, 3])
+            ax.set_xticklabels(['L', 'R', 'L', 'R'], rotation=0)
+            ax.text(
+                0.5, -0.25, 'VL', ha='center', va='center',
+                transform=ax.get_xaxis_transform())
+            ax.text(
+                2.5, -0.25, 'VR', ha='center', va='center',
+                transform=ax.get_xaxis_transform())
+
+            # Pretty
+            ax.set_title(wave_name)
+            ax.set_xlabel('')
+            ax.set_ylabel(f'peak height ({MU}V)')
+            ax.set_ylim((-0.2, 6))
+            ax.set_yticks((0, 3, 6))
+            my.plot.despine(ax)
+
+            # Stats (first_rec only, mouse is the paired unit)
+            if run_stats:
+                # Assert that we have data from all mice on all configs
+                assert (this_wave.groupby('mouse')['config'].nunique() == 4).all()
+
+                aov = my.stats.anova(
+                    this_wave, 'height ~ channel + ipsi + speaker_side + mouse')
+                aov_pvals_l.append(aov['pvals'])
+                aov_fit_l.append(
+                    aov['fit'].loc[~aov['fit'].index.str.startswith('fit_mouse')]
+                    )
+
+                # Post hoc
+                to_test = this_wave.set_index(
+                    ['channel', 'ipsi', 'speaker_side', 'mouse'])['height'].unstack('mouse').T
+                ttp_VL = scipy.stats.ttest_rel(
+                    to_test[('VL', True)].values, to_test[('VL', False)].values
+                    ).pvalue
+                ttp_VR = scipy.stats.ttest_rel(
+                    to_test[('VR', True)].values, to_test[('VR', False)].values
+                    ).pvalue
+                tt_pvals_l.append(pandas.Series({'VL': ttp_VL, 'VR': ttp_VR}))
+                stats_data_l.append(to_test)
+                stats_keys_l.append(wave_name)
+
+        # Stats output (first_rec only)
+        if run_stats:
+            big_aov_pvals = pandas.concat(aov_pvals_l, keys=stats_keys_l, names=['wave'])
+            big_aov_fit = pandas.concat(aov_fit_l, keys=stats_keys_l, names=['wave'])
+            big_tt = pandas.concat(tt_pvals_l, keys=stats_keys_l, names=['wave'])
+            big_stats_data = pandas.concat(
+                stats_data_l, keys=stats_keys_l, names=['wave'])
+
+            n_configs_by_mouse = big_stats_data.groupby('mouse').size()
+            assert (n_configs_by_mouse == 4).all()
+            n_mice = len(n_configs_by_mouse)
+
+            # Sigstr
+            big_tt_sigstr = big_tt.apply(my.stats.pvalue_to_significance_string)
+            big_aov_sigstr = big_aov_pvals.apply(my.stats.pvalue_to_significance_string)
+
+            # Mean height and diff
+            mean_height = big_stats_data.groupby('wave').mean().T.groupby('ipsi').mean().T
+            mean_height['diff'] = mean_height.loc[:, True] - mean_height.loc[:, False]
+            mean_height = mean_height.T
+
+            stats_filename = 'figures/STATS__PLOT_PEAK_HEIGHT_BY_WAVE_AND_CONFIG'
+            with open(stats_filename, 'w') as fi:
+                fi.write(stats_filename + '\n')
+                fi.write(f"n = {n_mice} mice\n")
+                fi.write(f"mean heights:\n{big_stats_data.groupby('wave').mean().mean(axis=1)}\n")
+                fi.write(f"AOV pvals by wave:\n{big_aov_pvals.unstack('wave')}\n")
+                fi.write(f"AOV fit by wave:\n{big_aov_fit.unstack('wave')}\n")
+                fi.write(f"AOV sig by wave:\n{big_aov_sigstr.unstack('wave')}\n")
+                fi.write(f"paired t-test p-value by wave:\n{big_tt.unstack('wave')}\n")
+                fi.write(f"paired t-test sigstr by wave:\n{big_tt_sigstr.unstack('wave')}\n")
+                fi.write(f"mean height by wave and ipsi:\n{mean_height}\n")
+            with open(stats_filename) as fi:
+                print(''.join(fi.readlines()))
+
+        ## Savefig
+        f.savefig(f'figures/PLOT_PEAK_HEIGHT_BY_WAVE_AND_CONFIG_{suffix}.svg')
+        f.savefig(f'figures/PLOT_PEAK_HEIGHT_BY_WAVE_AND_CONFIG_{suffix}.png', dpi=300)
 
 
 if PLOT_LATENCY_ABRA_VS_OURS:
+    """Broken until ABRA is re-run"""
     ## Connected-pairs plot of our latency vs ABRA's
     # Match the datasets by these columns
     match_keys = ['mouse', 'channel', 'speaker_side', 'level', 'wave_name']
@@ -1453,5 +1618,346 @@ if PLOT_LATENCY_ABRA_VS_OURS:
     f.savefig('figures/PLOT_LATENCY_ABRA_VS_OURS.svg')
     f.savefig('figures/PLOT_LATENCY_ABRA_VS_OURS.png', dpi=300)
 
+
+if PLOT_PEAK_GROWTH_FUNCTIONS:
+    """Plot peak-amplitude growth functions vs sound level, colored by wave
+    
+    Uses positive peaks (height of Wn_p); no normalization.
+    Four conditions:
+    - first_rec : one recording per mouse (mouse is the replicate)
+    - preHL, postHL_bilateral, postHL_sham : pooled, recording is the replicate
+      (no mean within mouse), so sem is over recordings
+    """
+
+    # Waves to include / color
+    wave_l = ['W1p', 'W2p', 'W3p', 'W4p', 'W5p']
+    aut_colorbar = my.plot.generate_colorbar(
+        len(wave_l), mapname='viridis_r', start=0, stop=1)
+
+    # Panels
+    channel_l = ['VL', 'VR']
+    speaker_side_l = ['L', 'R']
+
+    # Conditions: (suffix, sel dict, plot_individual)
+    condition_l = [
+        ('first_rec', dict(after_HL=False, n_experiment=0), False),
+        ('preHL', dict(after_HL=False), False),
+        ('postHL_bilateral', dict(after_HL=True, HL_type='bilateral'), True),
+        ('postHL_sham', dict(after_HL=True, HL_type='sham'), True),
+        ]
+
+    for suffix, sel, plot_individual in condition_l:
+
+        # Slice big_ridges to this condition
+        this_ridges = big_ridges
+        for k, v in sel.items():
+            this_ridges = this_ridges.xs(v, level=k)
+
+        # Positive peaks only, keep only the waves we plot
+        this = this_ridges.xs('pos', level='sign')
+        this = this[this['wave_name'].isin(wave_l)]
+
+        # Recording levels that survive the slice (the replicate unit)
+        recording_levels = [
+            c for c in ['HL_type', 'after_HL', 'n_experiment', 'mouse']
+            if c in this.index.names]
+
+        # height indexed by recording * channel * speaker_side * level * wave_name
+        h = this.set_index('wave_name', append=True)['height'].droplevel('n_ridge')
+
+        # Collapse any duplicate ridges mapped to same recording*config*level*wave
+        group_keys = recording_levels + [
+            'channel', 'speaker_side', 'level', 'wave_name']
+        h = h.groupby(group_keys).mean()
+
+        # Recordings as replicates
+        to_agg = h.unstack(recording_levels)
+
+        # Aggregate (only used for the mean+sem path)
+        if not plot_individual:
+            # index=(channel, speaker_side, level), cols=wave
+            agg_mean = to_agg.mean(axis=1).unstack('wave_name')
+            agg_err = to_agg.sem(axis=1).unstack('wave_name')
+
+        # Figure
+        f, axa = plt.subplots(
+            len(channel_l), len(speaker_side_l),
+            sharex=True, sharey=True, figsize=(5, 4))
+        f.subplots_adjust(
+            left=.17, right=.89, top=.95, bottom=.15, hspace=.15, wspace=.12)
+
+        # Plot each channel * speaker_side
+        for channel in channel_l:
+            for speaker_side in speaker_side_l:
+
+                # Get ax
+                ax = axa[
+                    channel_l.index(channel),
+                    speaker_side_l.index(speaker_side),
+                ]
+
+                if plot_individual:
+                    # One line per recording, colored by wave
+                    # Slice this config; index=(recording..., level), cols=wave
+                    try:
+                        sub = to_agg.xs(
+                            channel, level='channel').xs(
+                            speaker_side, level='speaker_side')
+                    except KeyError:
+                        continue
+
+                    # Plot each wave
+                    for n_wave, wave in enumerate(wave_l):
+                        color = aut_colorbar[n_wave]
+
+                        # level on rows, recordings on columns
+                        try:
+                            traces = sub.xs(wave, level='wave_name')
+                        except KeyError:
+                            continue
+
+                        # One line per recording (columns), x=level (index)
+                        for rec in traces.columns:
+                            col = traces[rec]
+                            ax.plot(
+                                col.index, col.values,
+                                color=color, lw=.5, alpha=.5)
+                
+                else:
+                    # Mean +- sem over recordings
+                    try:
+                        subdf = agg_mean.xs(
+                            channel, level='channel').xs(
+                            speaker_side, level='speaker_side')
+                        subdf_err = agg_err.xs(
+                            channel, level='channel').xs(
+                            speaker_side, level='speaker_side')
+                    except KeyError:
+                        continue
+
+                    # Plot each wave
+                    for n_wave, wave in enumerate(wave_l):
+                        color = aut_colorbar[n_wave]
+
+                        ax.plot(
+                            subdf.index, subdf[wave], color=color, lw=1)
+                        ax.fill_between(
+                            subdf.index,
+                            (subdf[wave] - subdf_err[wave]),
+                            (subdf[wave] + subdf_err[wave]),
+                            color=color, alpha=.5, lw=0)
+
+                # Pretty
+                my.plot.despine(ax)
+        
+        # Legend
+        for n_wave, wave in enumerate(wave_l):
+            f.text(
+                .95, .68 - n_wave * .05, f'wave {wave[1]}',
+                color=aut_colorbar[n_wave], ha='center', va='center', size=12)
+
+        # Pretty
+        f.text(.52, .01, 'sound level (dB SPL)', ha='center', va='bottom')
+        f.text(.02, .56, f'peak amplitude ({MU}V)',
+            rotation=90, ha='center', va='center')
+
+        ax.set_yscale('log')
+        ax.set_ylim((.1, 10))
+        ax.set_xlim((20, 80))
+        ax.set_xticks((30, 50, 70))
+
+        # Label the channel
+        for n_channel, channel in enumerate(channel_l):
+            axa[n_channel, 0].set_ylabel(channel)
+
+        # Label the speaker side
+        axa[0, 0].set_title('sound from left')
+        axa[0, 1].set_title('sound from right')
+
+
+        ## Savefig
+        f.savefig(os.path.join('figures',
+            f"PLOT_PEAK_GROWTH_FUNCTIONS_{suffix}.svg"))
+        f.savefig(os.path.join('figures',
+            f"PLOT_PEAK_GROWTH_FUNCTIONS_{suffix}.png"), dpi=300)    
+
+if PLOT_LABELING_DIAGNOSTIC:
+    """Scatter ridge coefs in (slope, latency) space vs wave centroids
+    
+    Checks whether the centroid priors are positioned so the Hungarian
+    assignment labels ridges correctly. Each point is one labeled ridge,
+    colored by its assigned wave; stars mark the centroid priors.
+    Rows: pre-HL, post-HL bilateral, post-HL sham. Columns: pos, neg.
+    """
+
+    # Rows: (row label, sel dict); columns: sign
+    condition_l = [
+        ('preHL', dict(after_HL=False)),
+        ('postHL_bilateral', dict(after_HL=True, HL_type='bilateral')),
+        ('postHL_sham', dict(after_HL=True, HL_type='sham')),
+        ]
+    sign_l = ['pos', 'neg']
+    centroids_by_sign = {'pos': wave_centroids_pos, 'neg': wave_centroids_neg}
+
+    # Figure
+    f, axa = plt.subplots(
+        len(condition_l), len(sign_l),
+        sharex=True, sharey=True, figsize=(9, 9))
+    f.subplots_adjust(
+        left=.1, right=.87, bottom=.08, top=.94, wspace=.15, hspace=.15)
+
+    # Plot each condition (row) * sign (column)
+    for (suffix, sel), axa_row in zip(condition_l, axa):
+
+        # Slice big_labeled_waves to this condition
+        this_condition = big_labeled_waves
+        for k, v in sel.items():
+            this_condition = this_condition.xs(v, level=k)
+
+        # Plot each sign
+        for sign, ax in zip(sign_l, axa_row):
+
+            # Slice this sign's labeled ridges
+            this = this_condition.xs(sign, level='sign')
+
+            # Plot each labeled ridge, colored by assigned wave
+            for wave_name, this_wave in this.groupby('wave_name'):
+                color = wave_colors[wave_name]
+
+                # Scatter the ridge coefs
+                ax.scatter(
+                    this_wave['latency_ms_at_ref_level'],
+                    this_wave['slope_us_per_db'],
+                    s=8, color=color, alpha=.4, lw=0)
+
+            # Overplot the centroid priors as stars
+            centroids = centroids_by_sign[sign]
+            for wave_name, centroid in centroids.iterrows():
+
+                # Star at the prior, black-edged so it reads over the cloud
+                ax.scatter(
+                    centroid['latency_ms_at_ref_level'],
+                    centroid['slope_us_per_db'],
+                    marker='*', s=140, color=wave_colors[wave_name],
+                    edgecolor='k', linewidth=.5, zorder=5)
+
+                # Label the wave next to its centroid
+                ax.annotate(
+                    wave_name,
+                    (centroid['latency_ms_at_ref_level'],
+                     centroid['slope_us_per_db']),
+                    textcoords='offset points', xytext=(4, 4), size='small')
+
+            # Pretty
+            my.plot.despine(ax)
+
+    # Column titles on the top row
+    for sign, ax in zip(sign_l, axa[0]):
+        ax.set_title(sign)
+
+    # Row labels on the left column
+    for (suffix, sel), ax in zip(condition_l, axa[:, 0]):
+        ax.set_ylabel(f"{suffix}\nslope ({MU}s / dB)")
+
+    # x-labels on the bottom row
+    for ax in axa[-1]:
+        ax.set_xlabel('latency at ref level (ms)')
+
+    ## Savefig
+    f.savefig('figures/PLOT_LABELING_DIAGNOSTIC.png', dpi=300)
+    f.savefig('figures/PLOT_LABELING_DIAGNOSTIC.svg')
+
+if PLOT_DIAGNOSTIC_HEATMAP_ONE_RECORDING:
+    """Heatmap of one recording with labeled ridges overlaid
+    
+    Diagnostic for W2/W3 resolution. Ridges colored by assigned wave;
+    unlabeled ridges in black. 
+    
+    Some good ones to check:
+    Cacti_225 VL L, pre-HL, exp 0
+    Pineapple_197 VL R, pre-HL, exp 0
+    """
+
+    # Choose recording
+    example_mouse = 'Pineapple_197' # 'Cacti_225'
+    channel = 'VL'
+    speaker_side = 'R' #'L'
+    sel = dict(after_HL=False, n_experiment=0)
+
+    # Slice abrs and ridges to this condition
+    this_abrs = averaged_abrs_by_date
+    this_ridges = big_ridges
+    for k, v in sel.items():
+        this_abrs = this_abrs.xs(v, level=k)
+        this_ridges = this_ridges.xs(v, level=k)
+
+    # Slice this recording, drop residual HL_type
+    example_abr = this_abrs.xs(example_mouse, level='mouse').xs(
+        channel, level='channel').xs(
+        speaker_side, level='speaker_side').droplevel('HL_type')
+    example_ridges = this_ridges.xs(example_mouse, level='mouse').xs(
+        channel, level='channel').xs(
+        speaker_side, level='speaker_side').droplevel('HL_type')
+
+    # Sort ascending by level so heatmap rows align with ridge levels
+    example_abr = example_abr.sort_index()
+
+    # Which waves to include
+    include_waves = [
+        'W1p', 'W1n', 'W2p', 'W2n', 'W3p', 'W3n', 'W4p', 'W4n', 'W5p', 'W5n']
+
+    # Levels for ticks
+    levels = sorted(example_abr.index)
+
+    # Figure
+    f, ax = my.plot.figure_1x1_standard()
+
+    # Heatmap
+    im = my.plot.imshow(
+        example_abr, ax=ax, cmap='gray',
+        x=example_abr.columns.values / sampling_rate * 1000,
+        y=example_abr.index.values, origin='lower')
+    im.set_clim((-2, 2))
+
+    # Iterate over each ridge
+    for (sign, n_ridge), this_ridge in example_ridges.groupby(['sign', 'n_ridge']):
+
+        # Color by wave name; unlabeled in black
+        wave_name = this_ridge['wave_name'].unique().item()
+        if pandas.isnull(wave_name):
+            color = 'k'
+        elif wave_name in include_waves:
+            color = wave_colors[wave_name]
+        else:
+            continue
+
+        # Plot the ridge
+        ax.plot(
+            this_ridge['timepoint'] / sampling_rate * 1000,
+            this_ridge.index.get_level_values('level').values,
+            color=color, ls='-', lw=1)
+
+        # Label the ridge at its top (loudest) level
+        if not pandas.isnull(wave_name):
+            top = this_ridge.iloc[-1]
+            ax.annotate(
+                wave_name,
+                (top['timepoint'] / sampling_rate * 1000,
+                 this_ridge.index.get_level_values('level')[-1]),
+                textcoords='offset points', xytext=(3, 0),
+                color=color, size='small')
+
+    # Pretty
+    ax.set_ylim((levels[0] - 2, levels[-1] + 2))
+    ax.set_yticks((levels[0], levels[-1]))
+    ax.set_xlabel('time from click (ms)')
+    ax.set_ylabel('sound level (dB SPL)')
+    ax.set_xlim((-1, 7))
+    ax.set_xticks((0, 2, 4, 6))
+    ax.set_title(f'{example_mouse} {channel} {speaker_side}')
+
+    ## Savefig
+    f.savefig('figures/PLOT_DIAGNOSTIC_HEATMAP_ONE_RECORDING.png', dpi=300)
+    f.savefig('figures/PLOT_DIAGNOSTIC_HEATMAP_ONE_RECORDING.svg')
 
 plt.show()
