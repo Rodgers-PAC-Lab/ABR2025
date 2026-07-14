@@ -15,6 +15,7 @@ import pandas
 import my.plot
 import matplotlib.pyplot as plt
 import matplotlib
+import seaborn
 
 
 ## Plotting 
@@ -61,7 +62,10 @@ mouse_metadata['HL_date'] = mouse_metadata['HL_date'].apply(
 # Index
 recording_metadata = recording_metadata.set_index(
     ['date', 'mouse', 'recording']).sort_index()
-    
+experiment_metadata = experiment_metadata.set_index(
+    ['date', 'mouse']).sort_index()
+mouse_metadata = mouse_metadata.set_index('mouse').sort_index()    
+
 
 ## Load previous results
 # Load results of Step2b_avg
@@ -72,14 +76,52 @@ trial_counts = pandas.read_pickle(
 
 
 ## Load abrpresto results
-threshold_df = pandas.read_pickle(
+abr_presto_threshold_df = pandas.read_pickle(
     os.path.join(output_directory, 'abr_presto_threshold_df'))
-sigmoid_params_df = pandas.read_pickle(
-    os.path.join(output_directory, 'abr_presto_sigmoid_params_df'))
-xc0mean_df = pandas.read_pickle(
-    os.path.join(output_directory, 'abr_presto_xc0mean_df'))
-xc0std_df = pandas.read_pickle(
-    os.path.join(output_directory, 'abr_presto_xc0std_df'))
+
+# Include only threshold
+abr_presto_threshold_df = abr_presto_threshold_df.loc[:, ['threshold']]
+
+# Join speaker_side from recording_metadata
+abr_presto_threshold_df = my.misc.join_level_onto_index(
+    abr_presto_threshold_df, 
+    to_join=recording_metadata['speaker_side'], 
+    join_on=['date', 'mouse', 'recording'],
+    )
+
+# Join after_HL from experiment_metadata
+abr_presto_threshold_df = my.misc.join_level_onto_index(
+    abr_presto_threshold_df, 
+    to_join=experiment_metadata[['after_HL', 'n_experiment']], 
+    join_on=['date', 'mouse'],
+    )
+
+# Join HL_type from mouse_metadata
+abr_presto_threshold_df = my.misc.join_level_onto_index(
+    abr_presto_threshold_df, 
+    to_join=mouse_metadata['HL_type'], 
+    join_on=['mouse'],
+    )
+
+# Reorder levels
+abr_presto_threshold_df = abr_presto_threshold_df.reorder_levels([
+    'HL_type', 'after_HL', 'mouse', 'date', 'n_experiment', 'recording', 
+    'speaker_side', 'channel', 
+    ]).sort_index()
+
+
+## Aggregate ABRpresto results
+# First aggregate over recording
+abr_presto_threshold_by_date = abr_presto_threshold_df.groupby(
+    [lev for lev in abr_presto_threshold_df.index.names if lev != 'recording']
+    ).mean()
+
+# Now either take the first experiment, or aggregate over experiments
+# Analyses of peaks use first experiment
+# First-pass analyses of threshold and rms used average
+# Let's try doing everything as the first experiment
+abr_presto_threshold_by_mouse = abr_presto_threshold_by_date.xs(
+    0, level='n_experiment').droplevel('date')
 
 
 ## Calculate the stdev(ABR) as a function of level
@@ -116,10 +158,12 @@ big_abr_evoked_rms = big_abr_evoked_rms.groupby(
     ).mean()
 
 # Aggregate over dates within a mouse * after_HL
-# TODO: consider just taking the first date instead
-big_abr_evoked_rms = big_abr_evoked_rms.groupby(
-    [lev for lev in big_abr_evoked_rms.index.names if lev != 'n_experiment'],
-    ).mean()
+# This was the orginal way - average 1st and 2nd experiments
+#~ big_abr_evoked_rms = big_abr_evoked_rms.groupby(
+    #~ [lev for lev in big_abr_evoked_rms.index.names if lev != 'n_experiment'],
+    #~ ).mean()
+# Newer way: always take first experiment
+big_abr_evoked_rms = big_abr_evoked_rms.xs(0, level='n_experiment')
 
 
 ## Do the same for the late response
@@ -131,10 +175,11 @@ big_abr_evoked_rms_late = big_abr_evoked_rms_late.groupby(
     ).mean()
 
 # Aggregate over dates within a mouse * after_HL
-# TODO: consider just taking the first date instead
-big_abr_evoked_rms_late = big_abr_evoked_rms_late.groupby(
-    [lev for lev in big_abr_evoked_rms_late.index.names if lev != 'n_experiment'],
-    ).mean()
+#~ big_abr_evoked_rms_late = big_abr_evoked_rms_late.groupby(
+    #~ [lev for lev in big_abr_evoked_rms_late.index.names if lev != 'n_experiment'],
+    #~ ).mean()
+# Newer way: always take first experiment
+big_abr_evoked_rms_late = big_abr_evoked_rms_late.xs(0, level='n_experiment')
 
 
 ## Calculate the threshold
@@ -169,14 +214,28 @@ threshold_db = over_thresh.loc[over_thresh.values].groupby(
 threshold_db = threshold_db.reindex(big_abr_evoked_rms.index)
 
 # error check that we always have a threshold
-#~ assert not threshold_db.isnull().any()
+assert not threshold_db.isnull().any()
+
+
+## Pair our thresholds with ABRpresto's
+paired = abr_presto_threshold_by_mouse.rename(
+    columns={'threshold': 'abrpresto'}).join(
+    threshold_db.rename('ours'))
+assert not paired.isnull().any().any()
+assert len(abr_presto_threshold_by_mouse) == len(threshold_db)
+assert len(abr_presto_threshold_by_mouse) == len(paired)
+
+# Compute diff
+abr_presto_diff = paired['ours'] - paired['abrpresto']
 
 
 ## Plots
 NORMALIZE_TO_WAVE1 = False
 WHICH_MICE = 'pre_HL'
 
-COMPARE_VS_ABRPRESTO = True
+PLOT_OUR_VS_PRESTO_THRESHOLDS = True
+PLOT_OUR_VS_PRESTO_THRESHOLDS_AFTER_HL = True
+PLOT_OUR_VS_PRESTO_THRESHOLDS_EXAMPLE_CONFIG = True
 PLOT_ABR_RMS_OVER_TIME = True
 PLOT_GROWTH_FUNCTIONS = True
 PLOT_ABR_POWER_VS_AGE = True
@@ -186,38 +245,25 @@ PLOT_ABR_POWER_VS_LEVEL_EARLY_VS_LATE_AFTER_HL = True
 BASELINE_VS_N_TRIALS = True
 HISTOGRAM_EVOKED_RMS_BY_LEVEL = True
 
-if COMPARE_VS_ABRPRESTO:
-    ## Attach metadata to ABRpresto thresholds
-    this_thresh = threshold_df['threshold'].reset_index()
+if PLOT_OUR_VS_PRESTO_THRESHOLDS:
+    ## Plot our threshold vs ABRPresto's as connected pairs for all configs
+    # For this one, do pre_HL only
+    
+    # The major outlier is Pineapple_197 RL-R, and I think ABRpresto correctly
+    # reveals noise in that recording, though there is also enough signal
+    # for our method to work
+    # Another outlier is NoBadVibes10 VL-L, where we had a small signal
+    # that wasn't enough to cross our threshold, and ABRpresto is probably
+    # more correct
 
-    # speaker_side from recording_metadata (date, mouse, recording)
-    this_thresh = this_thresh.merge(
-        recording_metadata['speaker_side'].reset_index(),
-        on=['date', 'mouse', 'recording'])
-
-    # after_HL from experiment_metadata (date, mouse)
-    this_thresh = this_thresh.merge(
-        experiment_metadata[['date', 'mouse', 'after_HL']],
-        on=['date', 'mouse'])
-
-    # HL_type from mouse_metadata (mouse)
-    this_thresh = this_thresh.merge(
-        mouse_metadata[['mouse', 'HL_type']],
-        on='mouse')
+    # Slice out pre-HL only
+    paired_pre_HL = paired.xs(False, level='after_HL').droplevel('HL_type')
 
 
-    ## Aggregate over date/recording, within mouse * after_HL (mean)
-    abrpresto_thresh = this_thresh.groupby(
-        ['HL_type', 'after_HL', 'mouse', 'channel', 'speaker_side'],
-        )['threshold'].mean()
-
-
-    ## Pair with mine, drop RL
-    paired = pandas.DataFrame({
-        'mine': threshold_db,
-        'abrpresto': abrpresto_thresh,
-        })
-
+    ## Plot 
+    # Channels in rows, speaker side in columns
+    channel_l = ['VL', 'VR', 'RL']
+    speaker_side_l = ['L', 'R']
     
     # 4 panels: channel (VL/VR) x speaker_side (L/R)
     # Color: bilateral+after_HL red, sham+after_HL blue, before_HL black
@@ -225,64 +271,187 @@ if COMPARE_VS_ABRPRESTO:
     f.subplots_adjust(
         wspace=.3, hspace=.4, left=.15, right=.95, bottom=.2, top=.92)
 
-    # Assign a color to each pair by condition
-    def pick_color(hl_type, after_hl):
-        if not after_hl:
-            return 'k'
-        elif hl_type == 'bilateral':
-            return 'r'
-        elif hl_type == 'sham':
-            return 'b'
-        else:
-            return 'gray'
-
-    # One panel per (channel, speaker_side)
-    for keys, this_panel in paired.groupby(['channel', 'speaker_side']):
-        this_channel, this_speaker_side = keys
+    # Groupby channel * speaker_side (subplots)
+    grouped = paired_pre_HL.groupby(['channel', 'speaker_side'])
+    
+    # Iterate over channel * speaker_side
+    for (this_channel, this_speaker_side), this_paired in grouped:
+        
+        # Get ax
         ax = axa[
-            ['VL', 'VR', 'RL'].index(this_channel),
-            ['L', 'R'].index(this_speaker_side)]
+            channel_l.index(this_channel),
+            speaker_side_l.index(this_speaker_side)]
 
         # One connected pair per row
-        for row_keys, this_pair in this_panel.groupby(
-                ['HL_type', 'after_HL', 'mouse']):
-            this_hl_type, this_after_hl, this_mouse = row_keys
-            this_color = pick_color(this_hl_type, this_after_hl)
-            ax.plot(
-                [0, 1], [this_pair['mine'].iloc[0], this_pair['abrpresto'].iloc[0]],
-                marker='o', color=this_color, alpha=.4, markersize=4)
+        ax.plot(
+            this_paired.loc[:, ['ours', 'abrpresto']].values.T,
+            marker='o', color='gray', alpha=.4, markersize=4)
 
-        # Panel title and axes
+        # Title by speaker side, ylabel by channel
         if ax in axa[0]:
             ax.set_title(this_speaker_side)
         if ax in axa[:, 0]:
-            ax.set_ylabel(this_channel, rotation=0)
+            ax.set_ylabel(this_channel, rotation=0, va='center', labelpad=20)
+        
+        # Pretty
         ax.set_xticks([0, 1])
         ax.set_xticklabels(['ours', 'ABRpresto'], rotation=45)
+        ax.set_yticks((30, 40, 50))
+        ax.set_ylim((20, 60))
         ax.set_xlim(-.8, 1.8)
         my.plot.despine(ax)
 
     # Savefig
-    f.savefig('figures/COMPARE_VS_ABRPRESTO.svg')
-    f.savefig('figures/COMPARE_VS_ABRPRESTO.png', dpi=300)    
+    f.savefig('figures/PLOT_OUR_VS_PRESTO_THRESHOLDS.svg')
+    f.savefig('figures/PLOT_OUR_VS_PRESTO_THRESHOLDS.png', dpi=300)    
+
+    
+    ## Swarm the difference
+    this_diff = paired_pre_HL['ours'] - paired_pre_HL['abrpresto']
+
+    f, ax = plt.subplots(figsize=(6, 2.25))
+    f.subplots_adjust(left=.15, bottom=.1, right=.95)
+    seaborn.swarmplot(
+        data=this_diff.rename('diff').reset_index(), 
+        x='channel', hue='speaker_side', y='diff', 
+        palette={'L': 'b', 'R': 'r'},
+        dodge=True,
+        legend=False,
+        )
+    ax.axhline(0, color='k', linestyle='-', linewidth=.75)
+    ax.set_ylabel('threshold difference (dB)\n(ours - ABRpresto)')
+    my.plot.despine(ax, which=('bottom', 'top', 'right'))  
+    
+    # Savefig
+    f.savefig('figures/PLOT_OUR_VS_PRESTO_THRESHOLDS_SWARM.svg')
+    f.savefig('figures/PLOT_OUR_VS_PRESTO_THRESHOLDS_SWARM.png', dpi=300)    
+    
+
+if PLOT_OUR_VS_PRESTO_THRESHOLDS_AFTER_HL:
+    ## Plot our threshold vs ABRPresto's as connected pairs for all configs
+
+    # Slice out post-HL only
+    paired_post_HL = paired.xs(True, level='after_HL')
 
 
-    ## Diff hist
-    # Distribution of mine - ABRpresto, all pairs pooled
-    this_diff = paired['mine'] - paired['abrpresto']
+    ## Plot 
+    # Channels in rows, speaker side in columns
+    channel_l = ['VL', 'VR', 'RL']
+    speaker_side_l = ['L', 'R']
+    
+    # 4 panels: channel (VL/VR) x speaker_side (L/R)
+    # Color: bilateral+after_HL red, sham+after_HL blue, before_HL black
+    f, axa = plt.subplots(3, 2, figsize=(3.8, 3.5), sharey=True, sharex=True)
+    f.subplots_adjust(
+        wspace=.3, hspace=.4, left=.15, right=.95, bottom=.2, top=.92)
 
-    f, ax = my.plot.figure_1x1_standard()
-    ax.hist(this_diff.values, bins=np.linspace(-20, 20, 51))
-    ax.axvline(0, color='k', linestyle='-', linewidth=.75)
-    ax.set_xlabel('threshold difference (dB)\n(ours - ABRpresto)')
-    ax.set_ylim(bottom=0)
-    ax.set_yticks([])
-    ax.set_xlim((-20, 20))
-    ax.set_xticks((-20, 0, 20))
-    my.plot.despine(ax, which=('left', 'top', 'right'))    
+    # Groupby channel * speaker_side (subplots)
+    grouped = paired_post_HL.groupby(['HL_type', 'channel', 'speaker_side'])
+    
+    # Iterate over channel * speaker_side
+    for (HL_type, this_channel, this_speaker_side), this_paired in grouped:
+        
+        # Get ax
+        ax = axa[
+            channel_l.index(this_channel),
+            speaker_side_l.index(this_speaker_side)]
 
-    f.savefig('figures/COMPARE_VS_ABRPRESTO__hist.svg')
-    f.savefig('figures/COMPARE_VS_ABRPRESTO__hist.png', dpi=300)    
+        # Color by HL_type
+        if HL_type == 'bilateral':
+            color = 'r'
+        else:
+            color = 'gray'
+
+        # One connected pair per row
+        ax.plot(
+            this_paired.loc[:, ['ours', 'abrpresto']].values.T,
+            marker='o', color=color, alpha=.4, markersize=4)
+        
+        # Title by speaker side, ylabel by channel
+        if ax in axa[0]:
+            ax.set_title(this_speaker_side)
+        if ax in axa[:, 0]:
+            ax.set_ylabel(this_channel, rotation=0, va='center', labelpad=20)
+        
+        # Pretty
+        ax.set_xticks([0, 1])
+        ax.set_xticklabels(['ours', 'ABRpresto'], rotation=45)
+        ax.set_yticks((30, 50, 70))
+        ax.set_ylim((20, 80))
+        ax.set_xlim(-.8, 1.8)
+        my.plot.despine(ax)
+
+    # Savefig
+    f.savefig('figures/PLOT_OUR_VS_PRESTO_THRESHOLDS_AFTER_HL.svg')
+    f.savefig('figures/PLOT_OUR_VS_PRESTO_THRESHOLDS_AFTER_HL.png', dpi=300)    
+
+
+if PLOT_OUR_VS_PRESTO_THRESHOLDS_EXAMPLE_CONFIG:
+    ## Plot our threshold vs ABRPresto's as connected pairs for example config
+
+    # Slice out pre-HL only
+    this_paired = paired.xs(False, level='after_HL').droplevel('HL_type')
+    
+    # Slice out VR-L only
+    # This example is nice because it shows that the outlier mouse has the
+    # same thresh with both methods
+    this_paired = this_paired.xs(
+        'L', level='speaker_side').xs('VR', level='channel')
+
+
+    ## Plot 
+    # One panel
+    f, ax = my.plot.figure_1x1_small()
+
+    # One connected pair per mouse
+    ax.plot(
+        this_paired.loc[:, ['ours', 'abrpresto']].values.T,
+        marker='o', color='gray', alpha=.4, markersize=4)
+
+    # Title by speaker side, ylabel by channel
+    if ax in axa[0]:
+        ax.set_title(this_speaker_side)
+    if ax in axa[:, 0]:
+        ax.set_ylabel(this_channel, rotation=0, va='center', labelpad=20)
+    
+    # Pretty
+    ax.set_xticks([0, 1])
+    ax.set_xticklabels(['ours', 'ABRpresto'], rotation=45)
+    ax.set_yticks((30, 40, 50))
+    ax.set_ylim((25, 50))
+    ax.set_xlim(-.8, 1.8)
+    my.plot.despine(ax)
+
+    # Savefig
+    f.savefig('figures/PLOT_OUR_VS_PRESTO_THRESHOLDS_EXAMPLE_CONFIG.svg')
+    f.savefig('figures/PLOT_OUR_VS_PRESTO_THRESHOLDS_EXAMPLE_CONFIG.png', dpi=300)    
+    
+    
+    ## Hist the difference
+    this_diff = this_paired['ours'] - this_paired['abrpresto']
+
+    #~ f, ax = my.plot.figure_1x1_small()
+    #~ ax.hist(this_diff.values, bins=np.linspace(-20, 20, 31), histtype='stepfilled', color='gray')
+    #~ ax.axvline(0, color='k', linestyle='-', linewidth=.75)
+    #~ ax.set_xlabel('threshold difference (dB)\n(ours - ABRpresto)')
+    #~ ax.set_ylim(bottom=0)
+    #~ ax.set_yticks([])
+    #~ ax.set_xlim((-10, 10))
+    #~ ax.set_xticks((-10, 0, 10))
+    #~ my.plot.despine(ax, which=('left', 'top', 'right'))       
+
+    f, ax = my.plot.figure_1x1_small()
+    f.subplots_adjust(left=.45, bottom=.1)
+    seaborn.swarmplot(this_diff, ax=ax)
+    ax.set_ylim((-10, 10))
+    ax.axhline(0, color='k', linestyle='-', linewidth=.75)
+    ax.set_ylabel('threshold difference (dB)\n(ours - ABRpresto)')
+    my.plot.despine(ax, which=('bottom', 'top', 'right'))  
+    
+    # Savefig
+    f.savefig('figures/PLOT_OUR_VS_PRESTO_THRESHOLDS_EXAMPLE_CONFIG_SWARM.svg')
+    f.savefig('figures/PLOT_OUR_VS_PRESTO_THRESHOLDS_EXAMPLE_CONFIG_SWARM.png', dpi=300)    
+
 
 if PLOT_ABR_RMS_OVER_TIME:
     ## Plot the smoothed rms of the ABR over time by condition

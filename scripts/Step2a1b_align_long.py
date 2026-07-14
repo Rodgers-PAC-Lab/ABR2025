@@ -1,25 +1,6 @@
 ## Identify and categorize clicks, and slice neural and audio data around them
-# This script takes a while - 12 minutes or so
-# Everything that involves loading the raw data for all sesssions should be
-# done in this script, to avoid having to load multiple times.
-#
-# Workflow:
-# * Loads data and checks for glitches
-# * Calculates PSD
-# * Extracts heartbeats
-# * Extract and categorizes clicks
-# * Slices neural and audio data around clicks
-# * Concat everything across sessions and stores
-#
-# This script is the one that assigns amplitude labels.
-#
-# Writes out the following in the output directory
-#   big_triggered_ad - audio data triggered on clicks
-#   big_triggered_neural - neural data triggered on clicks
-#   big_click_params - click metadata
-#   big_Pxx - PSDs
-#   big_heartbeat_info - time of each beat
-#   big_heartbeat_waveform - mean EKG waveform of each recording
+# Same as Step2a1, but a wider of slice of time for ABRAnalysis
+# TODO: Combine these two, and just slice out the needed time in next steps
 
 import os
 import json
