@@ -811,7 +811,7 @@ if PLOT_ABR_POWER_VS_AGE:
         })
     
     # Join sex
-    age_data = age_data.join(mouse_metadata.set_index('mouse')['sex'])
+    age_data = age_data.join(mouse_metadata['sex'])
     
     # Join experimenter
     mouse_experimenter = experiment_metadata.groupby(['mouse'])[
