@@ -1,3 +1,8 @@
 filepaths.json
 scripts/figures
-__pycache__
+__pycache__/
+*.pyc
+build/
+dist/
+*.egg-info/
+
