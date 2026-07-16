@@ -51,3 +51,12 @@ To run the GUI and measure ABR, refer to the file `./gui/README`.
 
 To run the analysis scripts and regenerate the figures included in the paper,
 refer to the file `./scripts/README`.
+
+
+## Installation (updated)
+
+conda create -n opensabr python=3.11
+conda activate opensabr
+git clone ... # TODO: insert git repo URL here
+cd OpenSABR
+pip install -e .          # or pip install -e ".[gui]"

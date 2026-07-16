@@ -35,8 +35,7 @@ import pandas
 import PyQt5.QtWidgets
 import PyQt5.QtCore
 import pyqtgraph as pg
-import ABR2025
-import ABR2025.signal_processing
+import opensabr
 
 
 ## Functions for identifying click times
@@ -1090,7 +1089,7 @@ class OscilloscopeWidget(PyQt5.QtWidgets.QWidget):
             to_psd = col[-2**16:]
             
             # Data is in V
-            Pxx, freqs = ABR2025.signal_processing.psd(
+            Pxx, freqs = opensabr.signal_processing.psd(
                 to_psd, 
                 NFFT=16384, 
                 Fs=self.abr_device.sampling_rate,
