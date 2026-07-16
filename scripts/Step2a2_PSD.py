@@ -55,10 +55,9 @@ big_Pxx = pandas.read_pickle(
 ## Join sex and HL on big_Pxx
 to_join = experiment_metadata[['after_HL', 'experimenter']].copy()
 to_join['experimenter'] = to_join['experimenter'].replace({'cedric': 'Cedric'})
+big_Pxx = my.misc.join_level_onto_index(big_Pxx, to_join)
 big_Pxx = my.misc.join_level_onto_index(
-    big_Pxx, to_join, join_on=['date', 'mouse'])
-big_Pxx = my.misc.join_level_onto_index(
-    big_Pxx, mouse_metadata[['sex', 'HL_type']], join_on='mouse')
+    big_Pxx, mouse_metadata[['sex', 'HL_type']])
 
 # TODO: make figures showing this
 # after_HL does not change much, except possibly a global attenuation

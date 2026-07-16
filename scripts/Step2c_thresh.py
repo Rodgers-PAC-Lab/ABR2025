@@ -86,21 +86,18 @@ abr_presto_threshold_df = abr_presto_threshold_df.loc[:, ['threshold']]
 abr_presto_threshold_df = my.misc.join_level_onto_index(
     abr_presto_threshold_df, 
     to_join=recording_metadata['speaker_side'], 
-    join_on=['date', 'mouse', 'recording'],
     )
 
 # Join after_HL from experiment_metadata
 abr_presto_threshold_df = my.misc.join_level_onto_index(
     abr_presto_threshold_df, 
     to_join=experiment_metadata[['after_HL', 'n_experiment']], 
-    join_on=['date', 'mouse'],
     )
 
 # Join HL_type from mouse_metadata
 abr_presto_threshold_df = my.misc.join_level_onto_index(
     abr_presto_threshold_df, 
     to_join=mouse_metadata['HL_type'], 
-    join_on=['mouse'],
     )
 
 # Reorder levels

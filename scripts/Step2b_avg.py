@@ -3,7 +3,7 @@
 #   big_abrs - averaged ABRs
 #   trial_counts - trial counts
 #   averaged_abrs_by_date - averaged ABRs aggregated by date
-#   averaged_abrs_by_mouse - averaged ABRs aggregated by mouse
+#   averaged_abrs_by_mouse - for each mouse, the ABR from the first date
 #
 # Plots:
 #   PLOT_SINGLE_TRIAL_ABR
@@ -20,6 +20,7 @@ import opensabr
 import my.plot
 import matplotlib.pyplot as plt
 import tqdm
+import shared
 
 
 ## Plotting defaults
@@ -45,29 +46,12 @@ stdev_sigma = 3
 
 
 ## Load metadata
-mouse_metadata = pandas.read_csv(
-    os.path.join(raw_data_directory, 'metadata', 'mouse_metadata.csv'))
-experiment_metadata = pandas.read_csv(
-    os.path.join(raw_data_directory, 'metadata', 'experiment_metadata.csv'))
-recording_metadata = pandas.read_csv(
-    os.path.join(raw_data_directory, 'metadata', 'recording_metadata.csv'))
+metadata = shared.load_metadata(raw_data_directory)
 
-# Coerce
-recording_metadata['date'] = recording_metadata['date'].apply(
-    lambda x: datetime.datetime.strptime(x, '%Y-%m-%d').date())
-experiment_metadata['date'] = experiment_metadata['date'].apply(
-    lambda x: datetime.datetime.strptime(x, '%Y-%m-%d').date())
-mouse_metadata['DOB'] = mouse_metadata['DOB'].apply(
-    lambda x: datetime.datetime.strptime(x, '%Y-%m-%d').date())
-
-# Coerce: special case this one because it can be null
-mouse_metadata['HL_date'] = mouse_metadata['HL_date'].apply(
-    lambda x: None if pandas.isnull(x) else 
-    datetime.datetime.strptime(x, '%Y-%m-%d').date())
-
-# Index
-recording_metadata = recording_metadata.set_index(
-    ['date', 'mouse', 'recording']).sort_index()
+# Parse out
+mouse_metadata = metadata['mouse_metadata'].copy()
+recording_metadata = metadata['recording_metadata'].copy()
+experiment_metadata = metadata['experiment_metadata'].copy()
     
     
 ## Load previous results
@@ -146,8 +130,7 @@ big_arts = 0.5 * (
 # Join after_HL and n_experiment onto big_abrs
 big_abrs = my.misc.join_level_onto_index(
     big_abrs, 
-    experiment_metadata.set_index(['mouse', 'date'])[['after_HL', 'n_experiment']], 
-    join_on=['mouse', 'date']
+    experiment_metadata[['after_HL', 'n_experiment']], 
     )
 
 # Drop the now unnecessary level 'date' (replaced with n_experiment)
@@ -156,8 +139,7 @@ big_abrs = big_abrs.droplevel('date')
 # Join HL_type onto big_abrs
 big_abrs = my.misc.join_level_onto_index(
     big_abrs, 
-    mouse_metadata.set_index('mouse')['HL_type'], 
-    join_on='mouse',
+    mouse_metadata['HL_type'], 
     )
 
 
@@ -165,8 +147,7 @@ big_abrs = my.misc.join_level_onto_index(
 # Join after_HL and n_experiment onto trial_counts
 trial_counts = my.misc.join_level_onto_index(
     trial_counts, 
-    experiment_metadata.set_index(['mouse', 'date'])[['after_HL', 'n_experiment']], 
-    join_on=['mouse', 'date']
+    experiment_metadata[['after_HL', 'n_experiment']], 
     )
 
 # Drop the now unnecessary level 'date' (replaced with n_experiment)
@@ -175,8 +156,7 @@ trial_counts = trial_counts.droplevel('date')
 # Join HL_type onto big_abrs
 trial_counts = my.misc.join_level_onto_index(
     trial_counts, 
-    mouse_metadata.set_index('mouse')['HL_type'], 
-    join_on='mouse',
+    mouse_metadata['HL_type'], 
     )
 
 # Reorder level to match big_abrs
@@ -206,16 +186,19 @@ n_mice = len(recording_duration.groupby('mouse').sum())
 quantiles = recording_duration.quantile((0, .25, .5, .75, 1))
 
 # Get range of surgical experiment dates
-surgery_df = experiment_metadata.join(
-    mouse_metadata.set_index('mouse')['HL_date'], on='mouse')
-surgery_dates = (surgery_df['date'] - surgery_df['HL_date']).dropna().sort_values()
+surgery_df = experiment_metadata.join(mouse_metadata['HL_date']).reset_index()
+surgery_dates = (
+    surgery_df['date'] - surgery_df['HL_date']).dropna().sort_values()
 surgery_dates = surgery_dates.value_counts().sort_index()
 
 # Print N
 stats_filename = 'figures/STATS__N_OVERALL'
 with open(stats_filename, 'w') as fi:
     fi.write(stats_filename + '\n')
-    fi.write(f'n = {n_mice} mice; {n_recordings} recordings; {n_experiments} experiments\n')
+    fi.write(
+        f'n = {n_mice} mice; {n_recordings} recordings; '
+        f'{n_experiments} experiments\n'
+        )
     fi.write(f'duration quantiles:\n{str(quantiles)}\n')
     fi.write(f'surgery date range:\n{str(surgery_dates)}')
 
