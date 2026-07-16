@@ -231,19 +231,23 @@ abr_presto_diff = paired['ours'] - paired['abrpresto']
 
 ## Plots
 NORMALIZE_TO_WAVE1 = False
-WHICH_MICE = 'pre_HL'
+WHICH_MICE = 'sham'
 
-PLOT_OUR_VS_PRESTO_THRESHOLDS = True
-PLOT_OUR_VS_PRESTO_THRESHOLDS_AFTER_HL = True
-PLOT_OUR_VS_PRESTO_THRESHOLDS_EXAMPLE_CONFIG = True
-PLOT_ABR_RMS_OVER_TIME = True
+PLOT_OUR_VS_PRESTO_THRESHOLDS = False
+PLOT_OUR_VS_PRESTO_THRESHOLDS_AFTER_HL = False
+PLOT_OUR_VS_PRESTO_THRESHOLDS_EXAMPLE_CONFIG = False
+PLOT_ABR_RMS_OVER_TIME = False
 PLOT_GROWTH_FUNCTIONS = True
-PLOT_ABR_POWER_VS_AGE = True
-PLOT_ABR_POWER_VS_LEVEL = True
-PLOT_ABR_POWER_VS_LEVEL_AFTER_HL = True
-PLOT_ABR_POWER_VS_LEVEL_EARLY_VS_LATE_AFTER_HL = True
-BASELINE_VS_N_TRIALS = True
-HISTOGRAM_EVOKED_RMS_BY_LEVEL = True
+PLOT_ABR_POWER_VS_AGE = False
+PLOT_ABR_POWER_VS_LEVEL = False
+PLOT_ABR_POWER_VS_LEVEL_AFTER_HL = False
+PLOT_ABR_POWER_VS_LEVEL_EARLY_VS_LATE_AFTER_HL = False
+BASELINE_VS_N_TRIALS = False
+HISTOGRAM_EVOKED_RMS_BY_LEVEL = False
+
+PLOT_RMS_GROWTH_FUNCTIONS_W1_W4 = True
+PLOT_RMS_GROWTH_FUNCTIONS_AFTER_HL = True
+
 
 if PLOT_OUR_VS_PRESTO_THRESHOLDS:
     ## Plot our threshold vs ABRPresto's as connected pairs for all configs
@@ -673,9 +677,11 @@ if PLOT_GROWTH_FUNCTIONS:
     agg_err = to_agg.sem(axis=1).unstack('timepoint')
 
     # Set up colorbar by time, rather than level
-    timepoint_l = sorted(agg_mean.columns)
+    wave_timepoints = list(np.rint(
+        np.array([1.36, 2.3, 3.2, 4.2, 5.2]) * 16).astype(int))
     aut_colorbar = my.plot.generate_colorbar(
-        len(timepoint_l), mapname='viridis_r', start=0, stop=1)  
+        len(wave_timepoints), mapname='viridis_r', start=0, stop=1)  
+    aut_colorbar = plt.cm.tab10.colors[1:]
 
     # Set up ax_rows and ax_cols
     channel_l = ['VL', 'VR', 'RL']
@@ -706,9 +712,9 @@ if PLOT_GROWTH_FUNCTIONS:
         ]
 
         # Plot each
-        for n_timepoint, timepoint in enumerate(subdf.columns[24:-8:16]):
+        for n_timepoint, timepoint in enumerate(wave_timepoints):
             # Get color
-            color = aut_colorbar[timepoint_l.index(timepoint)]
+            color = aut_colorbar[wave_timepoints.index(timepoint)]
 
 
             if NORMALIZE_TO_WAVE1:
@@ -750,13 +756,16 @@ if PLOT_GROWTH_FUNCTIONS:
         ax.yaxis.set_major_formatter(matplotlib.ticker.ScalarFormatter())
 
     # Legend
-    for n_label, (label, color) in enumerate(zip(timepoint_l[24:-8:16], aut_colorbar[24:-8:16])):
-        # Check we are correctly plotting once per ms
-        assert label // 16 == int(np.rint(label / 16))
+    for n_label, timepoint in enumerate(wave_timepoints):
+
+        # Get color
+        color = aut_colorbar[wave_timepoints.index(timepoint)]
         
         # Label
+        txt = f't = {timepoint / 16} ms'
+        txt = f't ~ Wave {n_label + 1}'
         f.text(
-            .95, .68 - n_label * .04, f't = {label // 16} ms',
+            .95, .68 - n_label * .04, txt,
             color=color, ha='center', va='center', size=12)
 
     # Pretty
@@ -1432,3 +1441,280 @@ if HISTOGRAM_EVOKED_RMS_BY_LEVEL:
 
     f.savefig('figures/HISTOGRAM_EVOKED_RMS_BY_LEVEL.svg')
     f.savefig('figures/HISTOGRAM_EVOKED_RMS_BY_LEVEL.png', dpi=300)
+
+
+if PLOT_RMS_GROWTH_FUNCTIONS_W1_W4:
+    ## RMS growth functions at the W1 and W4 timepoints, one figure per condition
+    # RMS-based analogue of the peak growth functions. Samples the smoothed
+    # RMS at the W1 and W4 timepoints (not true wave amplitudes; below
+    # threshold these approach the noise floor). Three figures: preHL,
+    # postHL bilateral, postHL sham. Each is a 3x2 channel * speaker_side grid.
+    # W1 orange, W4 purple. preHL: mean +- sem over mice. postHL: individual
+    # traces per recording (too few for meaningful error bars).
+
+    # Timepoints for W1 and W4 (samples), matching PLOT_GROWTH_FUNCTIONS
+    wave_timepoints = {
+        'W1': int(np.rint(1.36 * 16)),
+        'W4': int(np.rint(4.2 * 16)),
+        }
+    wave_colors = {'W1': 'tab:orange', 'W4': 'tab:purple'}
+
+    # Panels
+    channel_l = ['VL', 'VR', 'RL']
+    speaker_side_l = ['L', 'R']
+
+    # Conditions: (suffix, sel dict, plot_individual)
+    condition_l = [
+        ('preHL', dict(after_HL=False), False),
+        ('postHL_bilateral', dict(after_HL=True, HL_type='bilateral'), True),
+        ('postHL_sham', dict(after_HL=True, HL_type='sham'), True),
+        ]
+
+    for suffix, sel, plot_individual in condition_l:
+
+        # Slice big_abr_stds to this condition
+        this_stds = big_abr_stds
+        for k, v in sel.items():
+            this_stds = this_stds.xs(v, level=k)
+
+        # Aggregate over recordings within a date
+        to_agg = this_stds.groupby(
+            [lev for lev in this_stds.index.names if lev != 'recording']
+            ).mean()
+
+        # Take first experiment only (matches peak analyses)
+        to_agg = to_agg.xs(0, level='n_experiment')
+
+        # Slice RMS at the two timepoints; wide on timepoint -> stack to a
+        # 'wave' level. index=(config..., mouse, label, wave), value=rms
+        rms = to_agg.loc[:, list(wave_timepoints.values())]
+        rms.columns = pandas.Index(wave_timepoints.keys(), name='wave')
+        rms = rms.stack()
+
+        # Recording levels that survive the slice (the replicate unit)
+        recording_levels = [
+            c for c in ['HL_type', 'mouse'] if c in rms.index.names]
+
+        # Recordings as replicates: index=(config, label, wave), cols=recording
+        to_plot = rms.unstack(recording_levels)
+
+        # Aggregate over mice (only used for the mean+sem path)
+        if not plot_individual:
+            agg_mean = to_plot.mean(axis=1)
+            agg_err = to_plot.sem(axis=1)
+
+        # Figure
+        f, axa = plt.subplots(
+            len(channel_l), len(speaker_side_l),
+            sharex=True, sharey=True, figsize=(5, 5.5))
+        f.subplots_adjust(
+            left=.17, right=.89, top=.93, bottom=.11, hspace=.15, wspace=.12)
+
+        # Plot each channel * speaker_side
+        for channel in channel_l:
+            for speaker_side in speaker_side_l:
+
+                # Get ax
+                ax = axa[
+                    channel_l.index(channel),
+                    speaker_side_l.index(speaker_side),
+                ]
+
+                # Plot each wave
+                for wave in wave_timepoints:
+                    color = wave_colors[wave]
+
+                    if plot_individual:
+                        # One line per recording for this config * wave
+                        try:
+                            sub = to_plot.xs(channel, level='channel').xs(
+                                speaker_side, level='speaker_side').xs(
+                                wave, level='wave').sort_index()
+                        except KeyError:
+                            continue
+
+                        # One line per recording (columns), x=label (index)
+                        for rec in sub.columns:
+                            col = sub[rec]
+                            ax.plot(
+                                col.index, col.values * 1e6,
+                                color=color, lw=.75, alpha=1)
+
+                    else:
+                        # Mean +- sem over mice
+                        try:
+                            mean = agg_mean.xs(channel, level='channel').xs(
+                                speaker_side, level='speaker_side').xs(
+                                wave, level='wave').sort_index()
+                            err = agg_err.xs(channel, level='channel').xs(
+                                speaker_side, level='speaker_side').xs(
+                                wave, level='wave').sort_index()
+                        except KeyError:
+                            continue
+
+                        # Mean line + sem band (in uV)
+                        ax.plot(mean.index, mean.values * 1e6, color=color, lw=1)
+                        ax.fill_between(
+                            mean.index,
+                            (mean - err).values * 1e6,
+                            (mean + err).values * 1e6,
+                            color=color, alpha=.5, lw=0)
+
+                # Pretty
+                my.plot.despine(ax)
+                ax.set_yscale('log')
+                ax.set_ylim((.05, 2))
+                ax.set_xlim((20, 80))
+                ax.set_xticks((30, 50, 70))
+                ax.set_yticks((0.1, 1.0))
+                ax.yaxis.set_major_formatter(matplotlib.ticker.ScalarFormatter())
+
+        # Legend
+        for n_wave, wave in enumerate(wave_timepoints):
+            f.text(
+                .95, .66 - n_wave * .05, wave,
+                color=wave_colors[wave], ha='center', va='center', size=12)
+
+        # Pretty
+        f.text(.52, .01, 'sound level (dB SPL)', ha='center', va='bottom')
+        f.text(.02, .55, f'response strength ({MU}V rms)',
+            rotation=90, ha='center', va='center')
+
+        # Label the channel
+        for n_channel, channel in enumerate(channel_l):
+            axa[n_channel, 0].set_ylabel(channel)
+
+        # Label the speaker side
+        axa[0, 0].set_title('sound from left')
+        axa[0, 1].set_title('sound from right')
+
+        # Title the figure with the condition
+        f.suptitle(suffix, y=.99)
+
+
+        ## Savefig
+        f.savefig(os.path.join('figures',
+            f"PLOT_RMS_GROWTH_FUNCTIONS_W1_W4_{suffix}.svg"))
+        f.savefig(os.path.join('figures',
+            f"PLOT_RMS_GROWTH_FUNCTIONS_W1_W4_{suffix}.png"), dpi=300)
+
+
+if PLOT_RMS_GROWTH_FUNCTIONS_AFTER_HL:
+    ## RMS growth functions after HL, one figure per wave, colored by HL_type
+    # RMS-based analogue of PLOT_PEAK_GROWTH_FUNCTIONS_AFTER_HL. Samples the
+    # smoothed RMS at the W1 and W4 timepoints. after_HL==True only. One line
+    # per recording, colored by HL_type (bilateral red, sham gray). One figure
+    # per wave (W1, W4); each is a 3x2 channel * speaker_side grid.
+
+    # Timepoints for W1 and W4 (samples), matching PLOT_GROWTH_FUNCTIONS
+    wave_timepoints = {
+        'W1': int(np.rint(1.36 * 16)),
+        'W4': int(np.rint(4.2 * 16)),
+        }
+
+    # Color by HL_type
+    hl_colors = {'bilateral': 'red', 'sham': 'gray'}
+
+    # Panels
+    channel_l = ['VL', 'VR', 'RL']
+    speaker_side_l = ['L', 'R']
+
+    # Slice to post-HL, drop unoperated
+    this_stds = big_abr_stds.xs(True, level='after_HL').drop(
+        'none', level='HL_type')
+
+    # Aggregate over recordings within a date
+    to_agg = this_stds.groupby(
+        [lev for lev in this_stds.index.names if lev != 'recording']
+        ).mean()
+
+    # Take first experiment only (matches peak analyses)
+    to_agg = to_agg.xs(0, level='n_experiment')
+
+    # Recording levels (the replicate unit)
+    recording_levels = ['HL_type', 'mouse']
+
+    # One figure per wave
+    for wave, timepoint in wave_timepoints.items():
+
+        # RMS at this timepoint; index=(HL_type, mouse, channel,
+        # speaker_side, label), value=rms
+        rms = to_agg.loc[:, timepoint]
+
+        # Recordings onto columns, (config, label) on rows
+        to_plot = rms.unstack(recording_levels)
+
+        # Figure
+        f, axa = plt.subplots(
+            len(channel_l), len(speaker_side_l),
+            sharex=True, sharey=True, figsize=(5, 5.5))
+        f.subplots_adjust(
+            left=.17, right=.89, top=.93, bottom=.11, hspace=.15, wspace=.12)
+
+        # Plot each channel * speaker_side
+        for channel in channel_l:
+            for speaker_side in speaker_side_l:
+
+                # Get ax
+                ax = axa[
+                    channel_l.index(channel),
+                    speaker_side_l.index(speaker_side),
+                ]
+
+                # Slice this config; index=label, cols=recording; sort by level
+                try:
+                    sub = to_plot.xs(channel, level='channel').xs(
+                        speaker_side, level='speaker_side').sort_index()
+                except KeyError:
+                    continue
+
+                # One line per recording, colored by HL_type
+                for rec in sub.columns:
+
+                    # rec is a tuple (HL_type, mouse)
+                    hl_type = rec[recording_levels.index('HL_type')]
+                    color = hl_colors[hl_type]
+
+                    # Plot this recording's growth function (in uV)
+                    col = sub[rec]
+                    ax.plot(
+                        col.index, col.values * 1e6,
+                        color=color, lw=.75, alpha=1)
+
+                # Pretty
+                my.plot.despine(ax)
+                ax.set_yscale('log')
+                ax.set_ylim((.05, 2))
+                ax.set_xlim((20, 80))
+                ax.set_xticks((30, 50, 70))
+                ax.set_yticks((0.1, 1.0))
+                ax.yaxis.set_major_formatter(matplotlib.ticker.ScalarFormatter())
+
+        # Legend
+        for n_hl, (hl_type, color) in enumerate(hl_colors.items()):
+            f.text(
+                .95, .66 - n_hl * .05, hl_type,
+                color=color, ha='center', va='center', size=12)
+
+        # Pretty
+        f.text(.52, .01, 'sound level (dB SPL)', ha='center', va='bottom')
+        f.text(.02, .55, f'response strength ({MU}V rms)',
+            rotation=90, ha='center', va='center')
+
+        # Label the channel
+        for n_channel, channel in enumerate(channel_l):
+            axa[n_channel, 0].set_ylabel(channel)
+
+        # Label the speaker side
+        axa[0, 0].set_title('sound from left')
+        axa[0, 1].set_title('sound from right')
+
+        # Title the figure with the wave
+        f.suptitle(wave, y=.99)
+
+
+        ## Savefig
+        f.savefig(os.path.join('figures',
+            f"PLOT_RMS_GROWTH_FUNCTIONS_AFTER_HL_{wave}.svg"))
+        f.savefig(os.path.join('figures',
+            f"PLOT_RMS_GROWTH_FUNCTIONS_AFTER_HL_{wave}.png"), dpi=300)

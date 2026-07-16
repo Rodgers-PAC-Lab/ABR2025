@@ -351,21 +351,24 @@ big_labeled_waves.to_pickle(os.path.join(output_directory, 'big_labeled_waves'))
 
 
 ## Plot
-PLOT_RIDGES_ACROSS_MICE = True
-HISTOGRAM_WAVE_LATENCIES = True
-STRIP_PLOT_LATENCIES = True
+PLOT_RIDGES_ACROSS_MICE = False
+HISTOGRAM_WAVE_LATENCIES = False
+STRIP_PLOT_LATENCIES = False
 STRIP_PLOT_ABRA_LATENCIES = False
-PLOT_EXAMPLE_WATERFALL = True
+PLOT_EXAMPLE_WATERFALL = False
 PLOT_EXAMPLE_WATERFALL_ABRA = False
-PLOT_EXAMPLE_HEATMAP = True
-PLOT_PEAKS_AT_LOUDEST_ACROSS_MICE_VRL_ONLY = True
+PLOT_EXAMPLE_HEATMAP = False
+PLOT_PEAKS_AT_LOUDEST_ACROSS_MICE_VRL_ONLY = False
 PLOT_ABRA_PEAKS_AT_LOUDEST_ACROSS_MICE_VRL_ONLY = False
-PLOT_PEAK_LATENCY_BY_WAVE_AND_CONFIG = True
-PLOT_PEAK_HEIGHT_BY_WAVE_AND_CONFIG = True
+PLOT_PEAK_LATENCY_BY_WAVE_AND_CONFIG = False
+PLOT_PEAK_HEIGHT_BY_WAVE_AND_CONFIG = False
 PLOT_LATENCY_ABRA_VS_OURS = False
-PLOT_PEAK_GROWTH_FUNCTIONS = True
-PLOT_LABELING_DIAGNOSTIC = True
-PLOT_DIAGNOSTIC_HEATMAP_ONE_RECORDING = True
+PLOT_PEAK_GROWTH_FUNCTIONS = False
+PLOT_LABELING_DIAGNOSTIC = False
+PLOT_DIAGNOSTIC_HEATMAP_ONE_RECORDING = False
+PLOT_PEAK_GROWTH_FUNCTIONS_AFTER_HL = True
+PLOT_PEAK_W1_W4_RATIO_AFTER_HL = True
+
 
 if PLOT_RIDGES_ACROSS_MICE:
     """Plot ABR heatmaps with detected ridges overlaid for many mice
@@ -1631,8 +1634,10 @@ if PLOT_PEAK_GROWTH_FUNCTIONS:
 
     # Waves to include / color
     wave_l = ['W1p', 'W2p', 'W3p', 'W4p', 'W5p']
+    wave_l = ['W1p', 'W4p']
     aut_colorbar = my.plot.generate_colorbar(
         len(wave_l), mapname='viridis_r', start=0, stop=1)
+    aut_colorbar = np.array(plt.cm.tab10.colors)[[1, 4]]
 
     # Panels
     channel_l = ['VL', 'VR']
@@ -1671,7 +1676,7 @@ if PLOT_PEAK_GROWTH_FUNCTIONS:
         h = h.groupby(group_keys).mean()
 
         # Recordings as replicates
-        to_agg = h.unstack(recording_levels)
+        to_agg = h.unstack(recording_levels).sort_index()
 
         # Aggregate (only used for the mean+sem path)
         if not plot_individual:
@@ -1721,7 +1726,7 @@ if PLOT_PEAK_GROWTH_FUNCTIONS:
                             col = traces[rec]
                             ax.plot(
                                 col.index, col.values,
-                                color=color, lw=.5, alpha=.5)
+                                color=color, lw=.75, alpha=1)
                 
                 else:
                     # Mean +- sem over recordings
@@ -1959,5 +1964,239 @@ if PLOT_DIAGNOSTIC_HEATMAP_ONE_RECORDING:
     ## Savefig
     f.savefig('figures/PLOT_DIAGNOSTIC_HEATMAP_ONE_RECORDING.png', dpi=300)
     f.savefig('figures/PLOT_DIAGNOSTIC_HEATMAP_ONE_RECORDING.svg')
+
+
+if PLOT_PEAK_GROWTH_FUNCTIONS_AFTER_HL:
+    """Peak-amplitude growth functions after HL, colored by HL_type
+    
+    Uses positive peaks (height of Wn_p); no normalization.
+    after_HL==True only, pooled across n_experiment. One line per recording,
+    colored by HL_type (bilateral red, sham gray). No error bars.
+    One figure per wave (W1p, W4p); each is 2x2 over channel * speaker_side.
+    """
+
+    # Waves to plot (one figure each)
+    wave_l = ['W1p', 'W4p']
+
+    # Color by HL_type
+    hl_colors = {'bilateral': 'red', 'sham': 'gray'}
+
+    # Panels
+    channel_l = ['VL', 'VR']
+    speaker_side_l = ['L', 'R']
+
+    # Slice to after_HL, positive peaks, just the waves we plot
+    this_ridges = big_ridges.xs(True, level='after_HL')
+    this = this_ridges.xs('pos', level='sign')
+    this = this[this['wave_name'].isin(wave_l)]
+
+    # height indexed by recording * config * level * wave_name
+    h = this.set_index('wave_name', append=True)['height'].droplevel('n_ridge')
+
+    # Collapse any duplicate ridges mapped to same recording*config*level*wave
+    recording_levels = ['HL_type', 'n_experiment', 'mouse']
+    group_keys = recording_levels + [
+        'channel', 'speaker_side', 'level', 'wave_name']
+    h = h.groupby(group_keys).mean()
+
+    # One figure per wave
+    for wave in wave_l:
+
+        # Slice this wave
+        this_wave = h.xs(wave, level='wave_name')
+
+        # Recordings on columns, (config, level) on rows
+        to_agg = this_wave.unstack(recording_levels).sort_index()
+
+        # Figure
+        f, axa = plt.subplots(
+            len(channel_l), len(speaker_side_l),
+            sharex=True, sharey=True, figsize=(5, 4))
+        f.subplots_adjust(
+            left=.17, right=.89, top=.95, bottom=.15, hspace=.15, wspace=.12)
+
+        # Plot each channel * speaker_side
+        for channel in channel_l:
+            for speaker_side in speaker_side_l:
+
+                # Get ax
+                ax = axa[
+                    channel_l.index(channel),
+                    speaker_side_l.index(speaker_side),
+                ]
+
+                # Slice this config; index=level, cols=recording
+                try:
+                    sub = to_agg.xs(channel, level='channel').xs(
+                        speaker_side, level='speaker_side')
+                except KeyError:
+                    continue
+
+                # One line per recording, colored by HL_type
+                for rec in sub.columns:
+
+                    # rec is a tuple (HL_type, n_experiment, mouse)
+                    hl_type = rec[recording_levels.index('HL_type')]
+                    color = hl_colors[hl_type]
+
+                    # Plot this recording's growth function
+                    col = sub[rec]
+                    ax.plot(
+                        col.index, col.values,
+                        color=color, lw=.75, alpha=1)
+
+                # Pretty
+                my.plot.despine(ax)
+
+        # Legend
+        for n_hl, (hl_type, color) in enumerate(hl_colors.items()):
+            f.text(
+                .95, .68 - n_hl * .05, hl_type,
+                color=color, ha='center', va='center', size=12)
+
+        # Pretty
+        f.text(.52, .01, 'sound level (dB SPL)', ha='center', va='bottom')
+        f.text(.02, .56, f'peak amplitude ({MU}V)',
+            rotation=90, ha='center', va='center')
+        ax.set_yscale('log')
+        ax.set_ylim((.1, 10))
+        ax.set_xlim((20, 80))
+        ax.set_xticks((30, 50, 70))
+
+        # Label the channel
+        for n_channel, channel in enumerate(channel_l):
+            axa[n_channel, 0].set_ylabel(channel)
+
+        # Label the speaker side
+        axa[0, 0].set_title('sound from left')
+        axa[0, 1].set_title('sound from right')
+
+        # Title the figure with the wave
+        f.suptitle(wave, x=.02, y=.99, ha='left')
+
+
+        ## Savefig
+        f.savefig(os.path.join('figures',
+            f"PLOT_PEAK_GROWTH_FUNCTIONS_AFTER_HL_{wave}.svg"))
+        f.savefig(os.path.join('figures',
+            f"PLOT_PEAK_GROWTH_FUNCTIONS_AFTER_HL_{wave}.png"), dpi=300)
+
+
+if PLOT_PEAK_W1_W4_RATIO_AFTER_HL:
+    """W1p / W4p peak-amplitude ratio after HL, colored by HL_type
+    
+    Uses positive peaks (height of Wn_p). after_HL==True only, pooled across
+    n_experiment. One line per recording; ratio is null at any level where
+    either wave is absent for that recording. Colored by HL_type (bilateral
+    red, sham gray). 2x2 over channel * speaker_side.
+    """
+
+    # Waves forming the ratio (numerator / denominator)
+    numer_wave = 'W1p'
+    denom_wave = 'W4p'
+
+    # Color by HL_type
+    hl_colors = {'bilateral': 'red', 'sham': 'gray'}
+
+    # Panels
+    channel_l = ['VL', 'VR']
+    speaker_side_l = ['L', 'R']
+
+    # Slice to after_HL, positive peaks, just the two waves
+    this_ridges = big_ridges.xs(True, level='after_HL')
+    this = this_ridges.xs('pos', level='sign')
+    this = this[this['wave_name'].isin([numer_wave, denom_wave])]
+
+    # height indexed by recording * config * level * wave_name
+    h = this.set_index('wave_name', append=True)['height'].droplevel('n_ridge')
+
+    # Collapse any duplicate ridges mapped to same recording*config*level*wave
+    recording_levels = ['HL_type', 'n_experiment', 'mouse']
+    group_keys = recording_levels + [
+        'channel', 'speaker_side', 'level', 'wave_name']
+    h = h.groupby(group_keys).mean()
+
+    # Wave onto columns so we can divide numer by denom, aligned on all else
+    h = h.unstack('wave_name')
+
+    # Ratio; NaN wherever either wave is missing for this recording*config*level
+    ratio = (h[numer_wave] / h[denom_wave]).rename('ratio')
+
+    # Recordings onto columns, (config, level) on rows
+    to_agg = ratio.unstack(recording_levels)
+
+    # Figure
+    f, axa = plt.subplots(
+        len(channel_l), len(speaker_side_l),
+        sharex=True, sharey=True, figsize=(5, 4))
+    f.subplots_adjust(
+        left=.17, right=.89, top=.95, bottom=.15, hspace=.15, wspace=.12)
+
+    # Plot each channel * speaker_side
+    for channel in channel_l:
+        for speaker_side in speaker_side_l:
+
+            # Get ax
+            ax = axa[
+                channel_l.index(channel),
+                speaker_side_l.index(speaker_side),
+            ]
+
+            # Slice this config; index=level, cols=recording; sort by level
+            try:
+                sub = to_agg.xs(channel, level='channel').xs(
+                    speaker_side, level='speaker_side').sort_index()
+            except KeyError:
+                continue
+
+            # One line per recording, colored by HL_type
+            for rec in sub.columns:
+
+                # rec is a tuple (HL_type, n_experiment, mouse)
+                hl_type = rec[recording_levels.index('HL_type')]
+                color = hl_colors[hl_type]
+
+                # Plot this recording's ratio vs level
+                col = sub[rec]
+                ax.plot(
+                    col.index, col.values,
+                    color=color, lw=.75, alpha=1)
+
+            # Pretty
+            my.plot.despine(ax)
+
+    # Legend
+    for n_hl, (hl_type, color) in enumerate(hl_colors.items()):
+        f.text(
+            .95, .68 - n_hl * .05, hl_type,
+            color=color, ha='center', va='center', size=12)
+
+    # Reference line at ratio == 1
+    for ax in axa.flat:
+        ax.axhline(1, color='k', lw=.5, ls=':')
+
+    # Pretty
+    f.text(.52, .01, 'sound level (dB SPL)', ha='center', va='bottom')
+    f.text(.02, .56, f'{numer_wave} / {denom_wave} amplitude ratio',
+        rotation=90, ha='center', va='center')
+    ax.set_yscale('log')
+    ax.set_ylim((.1, 10))
+    ax.set_xlim((20, 80))
+    ax.set_xticks((30, 50, 70))
+
+    # Label the channel
+    for n_channel, channel in enumerate(channel_l):
+        axa[n_channel, 0].set_ylabel(channel)
+
+    # Label the speaker side
+    axa[0, 0].set_title('sound from left')
+    axa[0, 1].set_title('sound from right')
+
+
+    ## Savefig
+    f.savefig(os.path.join('figures',
+        'PLOT_PEAK_W1_W4_RATIO_AFTER_HL.svg'))
+    f.savefig(os.path.join('figures',
+        'PLOT_PEAK_W1_W4_RATIO_AFTER_HL.png'), dpi=300)
 
 plt.show()
