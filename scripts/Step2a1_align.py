@@ -29,7 +29,7 @@ import numpy as np
 import pandas
 import opensabr
 import tqdm
-
+import shared
 
 ## Paths
 # Load the required file filepaths.json (see README)
@@ -46,17 +46,12 @@ if not os.path.exists(output_directory):
     
 
 ## Load results of main1
-# TODO: place these metadata loaders into a shared helper function
-recording_metadata = pandas.read_csv(
-    os.path.join(raw_data_directory, 'metadata', 'recording_metadata.csv'))
+metadata = shared.load_medata(raw_data_directory)
 
-# Coerce
-recording_metadata['date'] = recording_metadata['date'].apply(
-    lambda x: datetime.datetime.strptime(x, '%Y-%m-%d').date())
-
-# Index
-recording_metadata = recording_metadata.set_index(
-    ['date', 'mouse', 'recording']).sort_index()
+# Parse out
+mouse_metadata = metadata['mouse_metadata'].copy()
+recording_metadata = metadata['recording_metadata'].copy()
+experiment_metadata = metadata['experiment_metadata'].copy()
 
 
 ## Params
