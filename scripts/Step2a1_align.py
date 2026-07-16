@@ -27,8 +27,7 @@ import datetime
 import scipy.signal
 import numpy as np
 import pandas
-import ABR2025
-import paclab # copy psd function in here if needed
+import opensabr
 import tqdm
 
 
@@ -47,21 +46,13 @@ if not os.path.exists(output_directory):
     
 
 ## Load results of main1
+# TODO: place these metadata loaders into a shared helper function
 recording_metadata = pandas.read_csv(
     os.path.join(raw_data_directory, 'metadata', 'recording_metadata.csv'))
 
 # Coerce
 recording_metadata['date'] = recording_metadata['date'].apply(
     lambda x: datetime.datetime.strptime(x, '%Y-%m-%d').date())
-#~ experiment_metadata['date'] = experiment_metadata['date'].apply(
-    #~ lambda x: datetime.datetime.strptime(x, '%Y-%m-%d').date())
-#~ mouse_metadata['DOB'] = mouse_metadata['DOB'].apply(
-    #~ lambda x: datetime.datetime.strptime(x, '%Y-%m-%d').date())
-
-#~ # Coerce: special case this one because it can be null
-#~ mouse_metadata['HL_date'] = mouse_metadata['HL_date'].apply(
-    #~ lambda x: None if pandas.isnull(x) else 
-    #~ datetime.datetime.strptime(x, '%Y-%m-%d').date())
 
 # Index
 recording_metadata = recording_metadata.set_index(
@@ -70,7 +61,7 @@ recording_metadata = recording_metadata.set_index(
 
 ## Params
 abr_start_sample = -40
-abr_stop_sample = 120
+abr_stop_sample = 160
 abr_highpass_freq = 300
 abr_lowpass_freq = 3000
 
@@ -133,7 +124,7 @@ for date, mouse, recording in tqdm.tqdm(recording_metadata.index):
         os.path.join(raw_data_directory, this_recording['short_datafile']))
     
     # Load the data
-    data = ABR2025.loading.load_recording(recording_folder)
+    data = opensabr.loading.load_recording(recording_folder)
     data = data['data']
     
     # Parse into neural and speaker data
@@ -276,7 +267,7 @@ for date, mouse, recording in tqdm.tqdm(recording_metadata.index):
         # Data is in V
         # Result is in V**2/Hz (if scale_by_freq == True, which is default)
         # Check: converting to uV yields a PSD that is 1e12 greater
-        Pxx, freqs = paclab.misc.psd(col, NFFT=16384, Fs=sampling_rate)
+        Pxx, freqs = opensabr.signal_processing.psd(col, NFFT=16384, Fs=sampling_rate)
         Pxx_l.append(Pxx)
 
     # DataFrame
@@ -295,7 +286,7 @@ for date, mouse, recording in tqdm.tqdm(recording_metadata.index):
     threshold_V = 10 ** amplitude_cuts.min()
     
     # Identify clicks
-    identified_clicks = ABR2025.signal_processing.identify_click_times(
+    identified_clicks = opensabr.signal_processing.identify_click_times(
         speaker_signal_V, 
         threshold_V=threshold_V,
         sampling_rate=sampling_rate, 
@@ -307,7 +298,7 @@ for date, mouse, recording in tqdm.tqdm(recording_metadata.index):
     speaker_signal_hp = identified_clicks['highpassed']
 
     # Categorize them
-    click_params = ABR2025.signal_processing.categorize_clicks(
+    click_params = opensabr.signal_processing.categorize_clicks(
         identified_clicks['peak_time_samples'], 
         speaker_signal_hp, 
         amplitude_cuts, 
@@ -316,7 +307,7 @@ for date, mouse, recording in tqdm.tqdm(recording_metadata.index):
 
 
     ## Extract each trigger from the audio signal
-    triggered_ad = ABR2025.signal_processing.slice_audio_on_clicks(
+    triggered_ad = opensabr.signal_processing.slice_audio_on_clicks(
         speaker_signal_hp, click_params)
 
 
