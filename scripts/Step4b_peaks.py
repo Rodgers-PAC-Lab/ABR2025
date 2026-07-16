@@ -10,7 +10,7 @@ import pandas
 import my.plot
 import matplotlib.pyplot as plt
 import seaborn
-import ABR2025.peak_picking
+import opensabr.peak_picking
 
 
 ## Plotting defaults
@@ -184,8 +184,8 @@ for this_recording_keys, this_recording in groupby:
     this_recording = this_recording.droplevel(group_levels).copy()
     
     # Trace positive and negative ridges for this heatmap
-    this_ridges_pos = ABR2025.peak_picking.trace_ridges(this_recording)
-    this_ridges_neg = ABR2025.peak_picking.trace_ridges(-this_recording)
+    this_ridges_pos = opensabr.peak_picking.trace_ridges(this_recording)
+    this_ridges_neg = opensabr.peak_picking.trace_ridges(-this_recording)
     
     # Concat both peaks and troughs
     this_ridges = pandas.concat(
@@ -265,9 +265,9 @@ for recording_keys, recording_ridges in big_ridges.groupby(group_levels):
     # we care about (so include them)
     # Then nothing above 0.253 (except for out-of-order assignments that get
     # dropped anyway)
-    labeled_pos = ABR2025.peak_picking.label_ridges(
+    labeled_pos = opensabr.peak_picking.label_ridges(
         recording_ridge_coefs.loc['pos'], wave_centroids_pos, max_cost=0.15)
-    labeled_neg = ABR2025.peak_picking.label_ridges(
+    labeled_neg = opensabr.peak_picking.label_ridges(
         recording_ridge_coefs.loc['neg'], wave_centroids_neg, max_cost=0.15)
 
     # Concat

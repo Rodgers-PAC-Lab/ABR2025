@@ -16,7 +16,7 @@ import datetime
 import json
 import numpy as np
 import pandas
-import ABR2025
+import opensabr
 import my.plot
 import matplotlib.pyplot as plt
 import tqdm
@@ -102,7 +102,7 @@ gobj = big_triggered_neural.groupby(group_by)
 # We use this helper function to drop the groupby levels, otherwise
 # the levels get duplicated by gobj.apply
 def drop_outliers(df):
-    res = ABR2025.signal_processing.trim_outliers(
+    res = opensabr.signal_processing.trim_outliers(
         df.droplevel(group_by),
         abs_max_sigma=abs_max_sigma,
         stdev_sigma=stdev_sigma,
