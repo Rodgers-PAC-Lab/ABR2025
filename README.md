@@ -11,10 +11,11 @@ The repository is structured as follows:
 - `./` - The toplevel directory, containing this README file
 - `./designs` - Design files, bill of materials, and other information about 
 physically building the system.
-- `./gui` - A Python module for running the graphical user interface (GUI) 
-to take ABR data. It can be imported like `import ABR2025.gui`. This code is 
+- `./src` - source code for analysis and GUI. Import like `import opensabr`
+- `./src/gui` - A Python module for running the graphical user interface (GUI) 
+to take ABR data. It can be imported like `import opensabr.gui`. This code is 
 run on a desktop PC connected to the ABR measuring system hardware.
-- `./scripts` - A folder of individual scripts that generate the figures in the
+- `./scripts` - A folder of demo scripts that generate the figures in the
 paper, using data that we collected and have shared on Zenodo. These scripts 
 are meant to be run one at a time, not imported and called by other scripts. 
 
