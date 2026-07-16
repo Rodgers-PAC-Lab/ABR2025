@@ -20,28 +20,16 @@ are meant to be run one at a time, not imported and called by other scripts.
 
 ## Requirements
 
-We used Python 3.10 for the GUI and Python 3.11 for the analysis scripts. It is
-likely that either will work. Newer versions may also work but we did not test
-them.
+We used Python 3.11. Newer versions may also work but we did not test them.
 
-The following Python modules are required to run the GUI or analysis scripts. 
-Other versions will likely work, but these are the ones we used. 
-
-- matplotlib==3.10.0
-- numpy==2.0.1
-- pandas==2.3.1
-- pyqt==5.15.10
-- pyqt5-sip==12.13.0
-- pyqtgraph==0.13.7
-- scipy==1.16.0
-- seaborn==0.13.2
-- pyserial==3.5
-- tqdm==4.67.1
+requirements-lock.txt includes the exact versions we used
 
 For the analysis scripts (but not the GUI), the following repository is 
 required. It should be on your PYTHONPATH so that it can be imported using
 the syntax `import my`.
 - `git clone git@github.com:Rodgers-PAC-Lab/my.git`
+
+TODO: only my.plot is needed, bring minimal into this repo
 
 ## Instructions
 
@@ -60,3 +48,7 @@ conda activate opensabr
 git clone ... # TODO: insert git repo URL here
 cd OpenSABR
 pip install -e .          # or pip install -e ".[gui]"
+
+For reproducibility (exact versions we used):
+pip install -r requirements-lock.txt   # exact dep versions
+pip install -e . --no-deps             # this package, deps already satisfied
