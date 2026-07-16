@@ -13,6 +13,7 @@ import numpy as np
 import pandas
 import my.plot
 import matplotlib.pyplot as plt
+import shared
 
 
 ## Plotting
@@ -33,35 +34,17 @@ output_directory = paths['output_directory']
 
 ## Params
 # Recording params
-# TODO: store in recording_metadata?
 sampling_rate = 16000 
 neural_channel_numbers = [0, 2, 4]
 
 
 ## Load metadata
-mouse_metadata = pandas.read_csv(
-    os.path.join(raw_data_directory, 'metadata', 'mouse_metadata.csv'))
-experiment_metadata = pandas.read_csv(
-    os.path.join(raw_data_directory, 'metadata', 'experiment_metadata.csv'))
-recording_metadata = pandas.read_csv(
-    os.path.join(raw_data_directory, 'metadata', 'recording_metadata.csv'))
+metadata = shared.load_metadata(raw_data_directory)
 
-# Coerce
-recording_metadata['date'] = recording_metadata['date'].apply(
-    lambda x: datetime.datetime.strptime(x, '%Y-%m-%d').date())
-experiment_metadata['date'] = experiment_metadata['date'].apply(
-    lambda x: datetime.datetime.strptime(x, '%Y-%m-%d').date())
-mouse_metadata['DOB'] = mouse_metadata['DOB'].apply(
-    lambda x: datetime.datetime.strptime(x, '%Y-%m-%d').date())
-
-# Coerce: special case this one because it can be null
-mouse_metadata['HL_date'] = mouse_metadata['HL_date'].apply(
-    lambda x: None if pandas.isnull(x) else 
-    datetime.datetime.strptime(x, '%Y-%m-%d').date())
-
-# Index
-recording_metadata = recording_metadata.set_index(
-    ['date', 'mouse', 'recording']).sort_index()
+# Parse out
+mouse_metadata = metadata['mouse_metadata'].copy()
+recording_metadata = metadata['recording_metadata'].copy()
+experiment_metadata = metadata['experiment_metadata'].copy()
 
 
 ## Load previous results
@@ -70,15 +53,12 @@ big_Pxx = pandas.read_pickle(
 
 
 ## Join sex and HL on big_Pxx
-to_join = experiment_metadata[['after_HL', 'date', 'mouse', 'experimenter']].copy()
+to_join = experiment_metadata[['after_HL', 'experimenter']].copy()
 to_join['experimenter'] = to_join['experimenter'].replace({'cedric': 'Cedric'})
 big_Pxx = my.misc.join_level_onto_index(
-    big_Pxx, 
-    to_join.set_index(['date', 'mouse']), 
-    join_on=['date', 'mouse'])
+    big_Pxx, to_join, join_on=['date', 'mouse'])
 big_Pxx = my.misc.join_level_onto_index(
-    big_Pxx, mouse_metadata[['sex', 'mouse', 'HL_type']].set_index(
-    'mouse'), join_on='mouse')
+    big_Pxx, mouse_metadata[['sex', 'HL_type']], join_on='mouse')
 
 # TODO: make figures showing this
 # after_HL does not change much, except possibly a global attenuation
@@ -152,7 +132,6 @@ ax.set_ylim((-40, 40))
 
 # 1/f line
 ax.plot([1, 1000], [20, -40], 'k--', lw=.75)
-#~ ax.text(10, -20, '1/f')
 
 # Label bands
 # ABR - 300-3000

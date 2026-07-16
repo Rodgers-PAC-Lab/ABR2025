@@ -45,8 +45,8 @@ if not os.path.exists(output_directory):
     os.mkdir(output_directory)
     
 
-## Load results of main1
-metadata = shared.load_medata(raw_data_directory)
+## Load metadata
+metadata = shared.load_metadata(raw_data_directory)
 
 # Parse out
 mouse_metadata = metadata['mouse_metadata'].copy()
@@ -262,7 +262,8 @@ for date, mouse, recording in tqdm.tqdm(recording_metadata.index):
         # Data is in V
         # Result is in V**2/Hz (if scale_by_freq == True, which is default)
         # Check: converting to uV yields a PSD that is 1e12 greater
-        Pxx, freqs = opensabr.signal_processing.psd(col, NFFT=16384, Fs=sampling_rate)
+        Pxx, freqs = opensabr.signal_processing.psd(
+            col, NFFT=16384, Fs=sampling_rate)
         Pxx_l.append(Pxx)
 
     # DataFrame
