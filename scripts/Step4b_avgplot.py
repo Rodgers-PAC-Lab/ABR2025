@@ -17,6 +17,7 @@ import matplotlib
 import pandas
 import my.plot
 import matplotlib.pyplot as plt
+import shared
 
 
 ## Plots
@@ -40,29 +41,12 @@ sampling_rate = 16000
 
 
 ## Load metadata
-mouse_metadata = pandas.read_csv(
-    os.path.join(raw_data_directory, 'metadata', 'mouse_metadata.csv'))
-experiment_metadata = pandas.read_csv(
-    os.path.join(raw_data_directory, 'metadata', 'experiment_metadata.csv'))
-recording_metadata = pandas.read_csv(
-    os.path.join(raw_data_directory, 'metadata', 'recording_metadata.csv'))
+metadata = shared.load_metadata(raw_data_directory)
 
-# Coerce
-recording_metadata['date'] = recording_metadata['date'].apply(
-    lambda x: datetime.datetime.strptime(x, '%Y-%m-%d').date())
-experiment_metadata['date'] = experiment_metadata['date'].apply(
-    lambda x: datetime.datetime.strptime(x, '%Y-%m-%d').date())
-mouse_metadata['DOB'] = mouse_metadata['DOB'].apply(
-    lambda x: datetime.datetime.strptime(x, '%Y-%m-%d').date())
-
-# Coerce: special case this one because it can be null
-mouse_metadata['HL_date'] = mouse_metadata['HL_date'].apply(
-    lambda x: None if pandas.isnull(x) else 
-    datetime.datetime.strptime(x, '%Y-%m-%d').date())
-
-# Index
-recording_metadata = recording_metadata.set_index(
-    ['date', 'mouse', 'recording']).sort_index()
+# Parse out
+mouse_metadata = metadata['mouse_metadata'].copy()
+recording_metadata = metadata['recording_metadata'].copy()
+experiment_metadata = metadata['experiment_metadata'].copy()
 
 
 ## Load previous results
@@ -73,8 +57,6 @@ averaged_abrs_by_mouse = pandas.read_parquet(
     os.path.join(output_directory, 'averaged_abrs_by_mouse'))
 averaged_abrs_by_date = pandas.read_parquet(
     os.path.join(output_directory, 'averaged_abrs_by_date'))
-trial_counts = pandas.read_parquet(
-    os.path.join(output_directory, 'trial_counts'))
 
 # Loudest dB
 loudest_db = big_abrs.index.get_level_values('label').max()
