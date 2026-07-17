@@ -67,13 +67,13 @@ recording_metadata = recording_metadata.set_index(
 
 ## Load previous results
 # Load results of Step2b_avg
-big_abrs = pandas.read_pickle(
+big_abrs = pandas.read_parquet(
     os.path.join(output_directory, 'big_abrs'))
-averaged_abrs_by_mouse = pandas.read_pickle(
+averaged_abrs_by_mouse = pandas.read_parquet(
     os.path.join(output_directory, 'averaged_abrs_by_mouse'))
-averaged_abrs_by_date = pandas.read_pickle(
+averaged_abrs_by_date = pandas.read_parquet(
     os.path.join(output_directory, 'averaged_abrs_by_date'))
-trial_counts = pandas.read_pickle(
+trial_counts = pandas.read_parquet(
     os.path.join(output_directory, 'trial_counts'))
 
 # Loudest dB

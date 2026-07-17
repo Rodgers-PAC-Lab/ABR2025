@@ -69,14 +69,14 @@ mouse_metadata = mouse_metadata.set_index('mouse').sort_index()
 
 ## Load previous results
 # Load results of Step2b_avg
-big_abrs = pandas.read_pickle(
+big_abrs = pandas.read_parquet(
     os.path.join(output_directory, 'big_abrs'))
-trial_counts = pandas.read_pickle(
+trial_counts = pandas.read_parquet(
     os.path.join(output_directory, 'trial_counts'))
 
 
 ## Load abrpresto results
-abr_presto_threshold_df = pandas.read_pickle(
+abr_presto_threshold_df = pandas.read_parquet(
     os.path.join(output_directory, 'abr_presto_threshold_df'))
 
 # Include only threshold

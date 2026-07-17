@@ -105,13 +105,13 @@ recording_metadata = recording_metadata.set_index(
 
 ## Load previous results
 # Load results of Step2b_avg
-#~ big_abrs = pandas.read_pickle(
+#~ big_abrs = pandas.read_parquet(
     #~ os.path.join(output_directory, 'big_abrs'))
-#~ averaged_abrs_by_mouse = pandas.read_pickle(
+#~ averaged_abrs_by_mouse = pandas.read_parquet(
     #~ os.path.join(output_directory, 'averaged_abrs_by_mouse'))
-averaged_abrs_by_date = pandas.read_pickle(
+averaged_abrs_by_date = pandas.read_parquet(
     os.path.join(output_directory, 'averaged_abrs_by_date'))
-trial_counts = pandas.read_pickle(
+trial_counts = pandas.read_parquet(
     os.path.join(output_directory, 'trial_counts'))
 
 # Loudest dB
@@ -342,8 +342,8 @@ print(big_labeled_waves.sort_values('cost').iloc[-30:])
 
 
 ## Save picked peaks
-big_ridges.to_pickle(os.path.join(output_directory, 'big_ridges'))
-big_labeled_waves.to_pickle(os.path.join(output_directory, 'big_labeled_waves'))
+big_ridges.to_parquet(os.path.join(output_directory, 'big_ridges'))
+big_labeled_waves.to_parquet(os.path.join(output_directory, 'big_labeled_waves'))
 
 
 ## Plot

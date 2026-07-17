@@ -169,4 +169,4 @@ plt.show()
 
 
 ## Store
-big_Pxx.to_pickle(os.path.join(output_directory, 'big_Pxx'))
+big_Pxx.to_parquet(os.path.join(output_directory, 'big_Pxx'))

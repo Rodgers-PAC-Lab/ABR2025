@@ -70,9 +70,9 @@ recording_metadata = recording_metadata.set_index(
 ## Load previous results
 # Load results of Step2a1_align
 # PowerRainbow2 looks a bit blunted and slow, but not totally out of the realm
-big_heartbeat_info = pandas.read_pickle(
+big_heartbeat_info = pandas.read_parquet(
     os.path.join(output_directory, 'big_heartbeat_info'))
-big_heartbeat_waveform = pandas.read_pickle(
+big_heartbeat_waveform = pandas.read_parquet(
     os.path.join(output_directory, 'big_heartbeat_waveform'))
 
 
