@@ -42,14 +42,47 @@ To run the analysis scripts and regenerate the figures included in the paper,
 refer to the file `./scripts/README`.
 
 
-## Installation (updated)
-
-conda create -n opensabr python=3.11
-conda activate opensabr
-git clone ... # TODO: insert git repo URL here
+## Installing OpenSABR
+# Clone repo
+cd ~/installed # or wherever desired
+git clone git@github.com:Rodgers-PAC-Lab/OpenSABR # TODO: update URL
 cd OpenSABR
-pip install -e .          # or pip install -e ".[gui]"
 
-For reproducibility (exact versions we used):
-pip install -r requirements-lock.txt   # exact dep versions
-pip install -e . --no-deps             # this package, deps already satisfied
+# --- Install: pick ONE of the two options below ---
+
+# Option A: Typical install (no version pins)
+conda create -n opensabr -c conda-forge python=3.11 pip ipython
+conda activate opensabr
+conda install -c conda-forge numpy scipy pandas matplotlib tqdm pyqt pyqtgraph pyserial pyarrow seaborn
+pip install -e . --no-deps
+
+# Option B: Reproducible install (linux-64 only)
+conda create -n opensabr --file opensabr-conda-lock.txt
+conda activate opensabr
+pip install -e . --no-deps
+
+
+## Installing ABRpresto into its own environment
+# pyarrow needed to read OpenSABR's parquet output; tqdm/ipython for convenience
+cd ~/installed # or wherever
+git clone git@github.com:Rodgers-PAC-Lab/ABRpresto # our fork
+cd ABRpresto
+git checkout dev # our branch with fixes
+conda create -n abrpresto -c conda-forge python=3.11 ipython pip 
+conda activate abrpresto
+conda install -c conda-forge numpy scipy matplotlib setuptools_scm pandas pyarrow tqdm
+pip install -e . --no-deps
+
+
+## Installing ABRA
+cd ~/dev 
+git clone git@github.com:Rodgers-PAC-Lab/abranalysis # our fork
+cd abranalysis
+git checkout dev # our branch with fixes
+conda create -n abra -c conda-forge python=3.11 ipython pip 
+conda activate abra
+conda install -c conda-forge numpy scipy pandas pyarrow scikit-learn pytorch=*=cpu* easydict streamlit tqdm "altair<5" keras tensorflow matplotlib
+
+# Put abranalysis on PYTHONPATH (it cannot be pip-installed)
+conda env config vars set PYTHONPATH=$HOME/dev
+conda deactivate && conda activate abra   # reload so the var takes effect
