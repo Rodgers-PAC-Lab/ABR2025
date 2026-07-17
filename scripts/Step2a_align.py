@@ -9,6 +9,7 @@
 # * Extracts heartbeats
 # * Extract and categorizes clicks
 # * Slices neural and audio data around clicks
+#   Data is sliced out to 10 ms, which we don't fully use, but ABRA does
 # * Concat everything across sessions and stores
 #
 # This script is the one that assigns amplitude labels.

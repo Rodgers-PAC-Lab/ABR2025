@@ -8,21 +8,21 @@ See README for further instructions
 
 Expected warnings:
 ---
-warning: 2025-05-09__Cat_227__1__RL has min 18 reps; skipping                                       
-warning: 2025-05-09__Cat_227__1__VL has min 18 reps; skipping                                       
-warning: 2025-05-09__Cat_227__1__VR has min 18 reps; skipping                                       
-warning: 2025-06-06__Cacti_223__11__RL has min 7 reps; skipping                                     
-warning: 2025-06-06__Cacti_223__11__VL has min 7 reps; skipping                                     
-warning: 2025-06-06__Cacti_223__11__VR has min 7 reps; skipping                                     
-warning: 2025-06-06__Cacti_223__12__RL has min 13 reps; skipping                                    
-warning: 2025-06-06__Cacti_223__12__VL has min 13 reps; skipping                                    
-warning: 2025-06-06__Cacti_223__12__VR has min 13 reps; skipping                                    
-warning: 2025-06-06__Cacti_223__15__RL has min 5 reps; skipping                                     
-warning: 2025-06-06__Cacti_223__15__VL has min 5 reps; skipping                                     
-warning: 2025-06-06__Cacti_223__15__VR has min 5 reps; skipping                                     
-warning: 2025-06-06__Cacti_224__7__RL has min 18 reps; skipping                                     
-warning: 2025-06-06__Cacti_224__7__VL has min 18 reps; skipping                                     
-warning: 2025-06-06__Cacti_224__7__VR has min 18 reps; skipping
+warning: 2025-05-09__Cat_227__1__RL has min 18 reps; skipping                                                                     
+warning: 2025-05-09__Cat_227__1__VL has min 18 reps; skipping                                                                     
+warning: 2025-05-09__Cat_227__1__VR has min 18 reps; skipping                                                                     
+warning: 2025-06-06__Cacti_223__11__RL has min 7 reps; skipping                                                                   
+warning: 2025-06-06__Cacti_223__11__VL has min 7 reps; skipping                                                                   
+warning: 2025-06-06__Cacti_223__11__VR has min 7 reps; skipping                                                                   
+warning: 2025-06-06__Cacti_223__12__RL has min 13 reps; skipping                                                                  
+warning: 2025-06-06__Cacti_223__12__VL has min 13 reps; skipping                                                                  
+warning: 2025-06-06__Cacti_223__12__VR has min 13 reps; skipping                                                                  
+warning: 2025-06-06__Cacti_223__15__RL has min 5 reps; skipping                                                                   
+warning: 2025-06-06__Cacti_223__15__VL has min 5 reps; skipping                                                                   
+warning: 2025-06-06__Cacti_223__15__VR has min 5 reps; skipping                                                                   
+warning: 2025-06-06__Cacti_224__7__RL has min 18 reps; skipping                                                                   
+warning: 2025-06-06__Cacti_224__7__VL has min 18 reps; skipping                                                                   
+warning: 2025-06-06__Cacti_224__7__VR has min 18 reps; skipping  
 """
 import os
 import json
@@ -108,9 +108,6 @@ min_trials_per_polarity = 20
 big_triggered_neural = pandas.read_parquet(
     os.path.join(output_directory, 'big_triggered_neural'))
 big_triggered_neural_orig = big_triggered_neural.copy()
-
-#~ # Subsample to get started
-#~ big_triggered_neural = big_triggered_neural.iloc[:100000]
 
 
 ## Format: columns samples -> seconds; polarity False/True -> -1/1

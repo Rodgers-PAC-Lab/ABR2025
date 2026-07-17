@@ -16,6 +16,7 @@ import my.plot
 import matplotlib.pyplot as plt
 import matplotlib
 import seaborn
+import shared
 
 
 ## Plotting 
@@ -39,32 +40,12 @@ sampling_rate = 16000
 
 
 ## Load metadata
-mouse_metadata = pandas.read_csv(
-    os.path.join(raw_data_directory, 'metadata', 'mouse_metadata.csv'))
-experiment_metadata = pandas.read_csv(
-    os.path.join(raw_data_directory, 'metadata', 'experiment_metadata.csv'))
-recording_metadata = pandas.read_csv(
-    os.path.join(raw_data_directory, 'metadata', 'recording_metadata.csv'))
+metadata = shared.load_metadata(raw_data_directory)
 
-# Coerce
-recording_metadata['date'] = recording_metadata['date'].apply(
-    lambda x: datetime.datetime.strptime(x, '%Y-%m-%d').date())
-experiment_metadata['date'] = experiment_metadata['date'].apply(
-    lambda x: datetime.datetime.strptime(x, '%Y-%m-%d').date())
-mouse_metadata['DOB'] = mouse_metadata['DOB'].apply(
-    lambda x: datetime.datetime.strptime(x, '%Y-%m-%d').date())
-
-# Coerce: special case this one because it can be null
-mouse_metadata['HL_date'] = mouse_metadata['HL_date'].apply(
-    lambda x: None if pandas.isnull(x) else 
-    datetime.datetime.strptime(x, '%Y-%m-%d').date())
-
-# Index
-recording_metadata = recording_metadata.set_index(
-    ['date', 'mouse', 'recording']).sort_index()
-experiment_metadata = experiment_metadata.set_index(
-    ['date', 'mouse']).sort_index()
-mouse_metadata = mouse_metadata.set_index('mouse').sort_index()    
+# Parse out
+mouse_metadata = metadata['mouse_metadata'].copy()
+recording_metadata = metadata['recording_metadata'].copy()
+experiment_metadata = metadata['experiment_metadata'].copy()
 
 
 ## Load previous results
@@ -75,50 +56,51 @@ trial_counts = pandas.read_parquet(
     os.path.join(output_directory, 'trial_counts'))
 
 
-## Load abrpresto results
-abr_presto_threshold_df = pandas.read_parquet(
-    os.path.join(output_directory, 'abr_presto_threshold_df'))
+## TODO: Put everything that depends on abrpresto in its own script
+#~ ## Load abrpresto results
+#~ abr_presto_threshold_df = pandas.read_parquet(
+    #~ os.path.join(output_directory, 'abr_presto_threshold_df'))
 
-# Include only threshold
-abr_presto_threshold_df = abr_presto_threshold_df.loc[:, ['threshold']]
+#~ # Include only threshold
+#~ abr_presto_threshold_df = abr_presto_threshold_df.loc[:, ['threshold']]
 
-# Join speaker_side from recording_metadata
-abr_presto_threshold_df = my.misc.join_level_onto_index(
-    abr_presto_threshold_df, 
-    to_join=recording_metadata['speaker_side'], 
-    )
+#~ # Join speaker_side from recording_metadata
+#~ abr_presto_threshold_df = my.misc.join_level_onto_index(
+    #~ abr_presto_threshold_df, 
+    #~ to_join=recording_metadata['speaker_side'], 
+    #~ )
 
-# Join after_HL from experiment_metadata
-abr_presto_threshold_df = my.misc.join_level_onto_index(
-    abr_presto_threshold_df, 
-    to_join=experiment_metadata[['after_HL', 'n_experiment']], 
-    )
+#~ # Join after_HL from experiment_metadata
+#~ abr_presto_threshold_df = my.misc.join_level_onto_index(
+    #~ abr_presto_threshold_df, 
+    #~ to_join=experiment_metadata[['after_HL', 'n_experiment']], 
+    #~ )
 
-# Join HL_type from mouse_metadata
-abr_presto_threshold_df = my.misc.join_level_onto_index(
-    abr_presto_threshold_df, 
-    to_join=mouse_metadata['HL_type'], 
-    )
+#~ # Join HL_type from mouse_metadata
+#~ abr_presto_threshold_df = my.misc.join_level_onto_index(
+    #~ abr_presto_threshold_df, 
+    #~ to_join=mouse_metadata['HL_type'], 
+    #~ )
 
-# Reorder levels
-abr_presto_threshold_df = abr_presto_threshold_df.reorder_levels([
-    'HL_type', 'after_HL', 'mouse', 'date', 'n_experiment', 'recording', 
-    'speaker_side', 'channel', 
-    ]).sort_index()
+#~ # Reorder levels
+#~ abr_presto_threshold_df = abr_presto_threshold_df.reorder_levels([
+    #~ 'HL_type', 'after_HL', 'mouse', 'date', 'n_experiment', 'recording', 
+    #~ 'speaker_side', 'channel', 
+    #~ ]).sort_index()
 
 
-## Aggregate ABRpresto results
-# First aggregate over recording
-abr_presto_threshold_by_date = abr_presto_threshold_df.groupby(
-    [lev for lev in abr_presto_threshold_df.index.names if lev != 'recording']
-    ).mean()
+#~ ## Aggregate ABRpresto results
+#~ # First aggregate over recording
+#~ abr_presto_threshold_by_date = abr_presto_threshold_df.groupby(
+    #~ [lev for lev in abr_presto_threshold_df.index.names if lev != 'recording']
+    #~ ).mean()
 
-# Now either take the first experiment, or aggregate over experiments
-# Analyses of peaks use first experiment
-# First-pass analyses of threshold and rms used average
-# Let's try doing everything as the first experiment
-abr_presto_threshold_by_mouse = abr_presto_threshold_by_date.xs(
-    0, level='n_experiment').droplevel('date')
+#~ # Now either take the first experiment, or aggregate over experiments
+#~ # Analyses of peaks use first experiment
+#~ # First-pass analyses of threshold and rms used average
+#~ # Let's try doing everything as the first experiment
+#~ abr_presto_threshold_by_mouse = abr_presto_threshold_by_date.xs(
+    #~ 0, level='n_experiment').droplevel('date')
 
 
 ## Calculate the stdev(ABR) as a function of level
@@ -214,16 +196,16 @@ threshold_db = threshold_db.reindex(big_abr_evoked_rms.index)
 assert not threshold_db.isnull().any()
 
 
-## Pair our thresholds with ABRpresto's
-paired = abr_presto_threshold_by_mouse.rename(
-    columns={'threshold': 'abrpresto'}).join(
-    threshold_db.rename('ours'))
-assert not paired.isnull().any().any()
-assert len(abr_presto_threshold_by_mouse) == len(threshold_db)
-assert len(abr_presto_threshold_by_mouse) == len(paired)
+#~ ## Pair our thresholds with ABRpresto's
+#~ paired = abr_presto_threshold_by_mouse.rename(
+    #~ columns={'threshold': 'abrpresto'}).join(
+    #~ threshold_db.rename('ours'))
+#~ assert not paired.isnull().any().any()
+#~ assert len(abr_presto_threshold_by_mouse) == len(threshold_db)
+#~ assert len(abr_presto_threshold_by_mouse) == len(paired)
 
-# Compute diff
-abr_presto_diff = paired['ours'] - paired['abrpresto']
+#~ # Compute diff
+#~ abr_presto_diff = paired['ours'] - paired['abrpresto']
 
 
 ## Plots
