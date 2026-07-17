@@ -378,15 +378,15 @@ big_heartbeat_waveform = pandas.concat(
     
 
 ## Store
-big_triggered_ad.to_pickle(
+big_triggered_ad.to_parquet(
     os.path.join(output_directory, 'big_triggered_ad'))
-big_triggered_neural.to_pickle(
+big_triggered_neural.to_parquet(
     os.path.join(output_directory, 'big_triggered_neural'))
-big_click_params.to_pickle(
+big_click_params.to_parquet(
     os.path.join(output_directory, 'big_click_params'))
-big_Pxx.to_pickle(
+big_Pxx.to_parquet(
     os.path.join(output_directory, 'big_Pxx'))
-big_heartbeat_info.to_pickle(
+big_heartbeat_info.to_parquet(
     os.path.join(output_directory, 'big_heartbeat_info'))
-big_heartbeat_waveform.to_pickle(
+big_heartbeat_waveform.to_parquet(
     os.path.join(output_directory, 'big_heartbeat_waveform'))

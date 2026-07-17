@@ -48,7 +48,7 @@ experiment_metadata = metadata['experiment_metadata'].copy()
 
 
 ## Load previous results
-big_Pxx = pandas.read_pickle(
+big_Pxx = pandas.read_parquet(
     os.path.join(output_directory, 'big_Pxx'))
 
 

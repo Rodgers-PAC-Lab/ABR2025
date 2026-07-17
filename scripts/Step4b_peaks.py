@@ -28,10 +28,6 @@ with open('filepaths.json') as fi:
 raw_data_directory = paths['raw_data_directory']
 output_directory = paths['output_directory']
 
-# For loading results from abranalysis
-abranalysis_path = os.path.expanduser(
-    '~/mnt/cuttlefish/chris/data/20251214_abr_data/output_20260704_10ms')
-
 
 ## Params
 sampling_rate = 16000
@@ -134,8 +130,8 @@ averaged_abrs_by_date = averaged_abrs_by_date * 1e6
 
 ## Load abranalysis peaks
 # TODO: double check that post HL was excluded
-big_abra_peaks = pandas.read_pickle(
-    os.path.join(abranalysis_path, 'big_abra_peaks'))
+big_abra_peaks = pandas.read_parquet(
+    os.path.join(output_directory, 'big_abra_peaks'))
 
 # Drop RL
 # TODO: this should never have been computed in the first place, fix upstream

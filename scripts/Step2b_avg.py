@@ -56,9 +56,9 @@ experiment_metadata = metadata['experiment_metadata'].copy()
     
 ## Load previous results
 # Load results of Step2a1_align
-big_triggered_neural = pandas.read_pickle(
+big_triggered_neural = pandas.read_parquet(
     os.path.join(output_directory, 'big_triggered_neural'))
-big_click_params = pandas.read_pickle(
+big_click_params = pandas.read_parquet(
     os.path.join(output_directory, 'big_click_params'))
 
 # Loudest dB
@@ -361,7 +361,7 @@ plt.show()
 
 
 ## Store
-big_abrs.to_pickle(os.path.join(output_directory, 'big_abrs'))
-averaged_abrs_by_date.to_pickle(os.path.join(output_directory, 'averaged_abrs_by_date'))
-averaged_abrs_by_mouse.to_pickle(os.path.join(output_directory, 'averaged_abrs_by_mouse'))
-trial_counts.to_pickle(os.path.join(output_directory, 'trial_counts'))
+big_abrs.to_parquet(os.path.join(output_directory, 'big_abrs'))
+averaged_abrs_by_date.to_parquet(os.path.join(output_directory, 'averaged_abrs_by_date'))
+averaged_abrs_by_mouse.to_parquet(os.path.join(output_directory, 'averaged_abrs_by_mouse'))
+trial_counts.to_frame().to_parquet(os.path.join(output_directory, 'trial_counts'))
