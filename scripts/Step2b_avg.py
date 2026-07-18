@@ -65,6 +65,23 @@ big_click_params = pandas.read_parquet(
 loudest_db = big_triggered_neural.index.get_level_values('label').max()
 
 
+## TODO: Exclude upstream
+# Drop whole mouse (noisy)
+big_triggered_neural = big_triggered_neural.drop('Pineapple_197', level='mouse')
+big_click_params = big_click_params.drop('Pineapple_197', level='mouse')
+
+# Drop specific recordings (done under iso)
+midx = pandas.MultiIndex.from_tuples([
+    (datetime.date(2025, 6, 6), 'Cacti_223', 14),
+    (datetime.date(2025, 6, 6), 'Cacti_223', 15),
+    ], names=['date', 'mouse', 'recording']
+    )
+big_triggered_neural = my.misc.slice_df_by_some_levels(
+    big_triggered_neural, midx, drop=True)
+big_click_params = my.misc.slice_df_by_some_levels(
+    big_click_params, midx, drop=True)
+
+
 ## Join on speaker_side
 # Should have done this at the same time as joining channel
 idx = big_triggered_neural.index.to_frame().reset_index(drop=True)

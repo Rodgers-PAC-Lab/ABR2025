@@ -32,6 +32,7 @@ import opensabr
 import tqdm
 import shared
 
+
 ## Paths
 # Load the required file filepaths.json (see README)
 with open('filepaths.json') as fi:

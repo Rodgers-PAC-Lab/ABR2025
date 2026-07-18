@@ -62,6 +62,39 @@ max_cost_wave_assign = 0.15
 # Assign priority waves first - Can be helpful to ensure we get W1 and W4
 priority_wave_list = [] #['W1', 'W4']
 
+# Define a set of priors on where waves typically are, which are used as 
+# starting points for labeling waves
+# Each tuple is (slope_us_per_db, latency_ms)
+wave_centroids_pos = pandas.DataFrame.from_dict({
+    'W0p': (-4.5, 0.6),
+    'W1p': (-5.2, 1.36),
+    'W2p': (-8.7, 2.3),
+    'W3p': (-8.3, 3.2),
+    'W4p': (-13.0, 4.2),
+    'W5p': (-13.2, 5.2),
+    'W6p': (-7.9, 6.1),
+    'W7p': (-8.5, 7.0),
+    }, 
+    orient='index', 
+    columns=['slope_us_per_db', 'latency_ms_at_ref_level'])
+wave_centroids_pos.index.name = 'wave_name'
+
+wave_centroids_neg = pandas.DataFrame.from_dict({
+    'W0n': (-3.9, 0.9),
+    'W1n': (-6.4, 1.8),
+    'W2n': (-8.8, 2.7),
+    'W3n': (-9.1, 3.6),
+    'W4n': (-15.3, 4.7),
+    'W5n': (-11.5, 5.7),
+    'W6n': (-8.8, 6.4),
+    'W7n': (-10.4, 7.2),
+    }, 
+    orient='index', 
+    columns=['slope_us_per_db', 'latency_ms_at_ref_level'])
+wave_centroids_neg.index.name = 'wave_name'
+
+all_wave_centroids = pandas.concat(
+    [wave_centroids_pos, wave_centroids_neg]).sort_index()
 
 def trace_ridges(abr_2d, min_prominence=min_prominence, start_level=start_level,
     max_shift=max_shift, min_seed_spacing=min_seed_spacing):

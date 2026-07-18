@@ -69,6 +69,9 @@ big_abr = pandas.read_parquet(
 # Keep only after_HL == False
 big_abr = big_abr.xs(False, level='after_HL').droplevel('HL_type')
 
+# Keep only vertex-ear channels
+big_abr = big_abr.drop('RL', level='channel')
+
 
 ## Run through abranalysis
 # Run each mouse * channel * speaker_side separately, leaving only `level`
