@@ -63,23 +63,20 @@ duration_samples = int(np.rint(16e3 * duration_ms / 1e3))
 
 
 ## Load data
-big_abr = pandas.read_parquet(
-    os.path.join(output_directory, 'averaged_abrs_by_mouse'))
-
-# Keep only after_HL == False
-big_abr = big_abr.xs(False, level='after_HL').droplevel('HL_type')
+averaged_abrs_by_date = pandas.read_parquet(
+    os.path.join(output_directory, 'averaged_abrs_by_date'))
 
 # Keep only vertex-ear channels
-big_abr = big_abr.drop('RL', level='channel')
+averaged_abrs_by_date = averaged_abrs_by_date.drop('RL', level='channel')
 
 
 ## Run through abranalysis
-# Run each mouse * channel * speaker_side separately, leaving only `level`
-grouping_keys = ['mouse', 'channel', 'speaker_side']
+# Group on every level except 'label'
+grouping_keys = [lev for lev in averaged_abrs_by_date.index.names if lev != 'label']
 wave_peaks_l = []
 wave_peaks_keys_l = []
 
-for keys, this_abr in big_abr.groupby(grouping_keys):
+for keys, this_abr in averaged_abrs_by_date.groupby(grouping_keys):
     
     # Droplevel on slice
     this_abr = this_abr.droplevel(grouping_keys).copy()

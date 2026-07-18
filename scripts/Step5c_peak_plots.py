@@ -307,7 +307,7 @@ if PLOT_EXAMPLE_HEATMAP:
     
 
 if PLOT_PEAKS_AT_LOUDEST_ACROSS_MICE:
-    """Plot VR-L ABR at loudest level across mice with peaks indicated
+    """Plot ABR at loudest level across mice with peaks indicated
     
     Four conditions:
     - first_rec_VRL_only : for an example with one line per mouse
@@ -615,10 +615,7 @@ if PLOT_PEAK_GROWTH_FUNCTIONS:
     # peak_height indexed by mouse * channel * speaker_side * level * wave_name
     peak_height = this_ridges.set_index(
         'wave_name', append=True)['height'].droplevel('n_ridge')
-    
-    # Collapse any duplicate ridges mapped to same mouse*config*level*wave
-    peak_height = peak_height.groupby(
-        ['mouse', 'channel', 'speaker_side', 'level', 'wave_name']).mean()
+    assert not peak_height.index.duplicated().any()
     
     # Mice as replicates (one column per mouse)
     peak_height_by_mouse = peak_height.unstack('mouse').sort_index()
@@ -724,11 +721,7 @@ if PLOT_PEAK_GROWTH_FUNCTIONS_AFTER_HL:
     # peak_height indexed by recording * channel * speaker_side * level * wave_name
     peak_height = this_ridges.set_index(
         'wave_name', append=True)['height'].droplevel('n_ridge')
-    
-    # Collapse any duplicate ridges mapped to same recording*config*level*wave
-    peak_height = peak_height.groupby(
-        recording_levels + ['channel', 'speaker_side', 'level', 'wave_name']
-        ).mean()
+    assert not peak_height.index.duplicated().any()    
     
     
     ## One figure per wave
