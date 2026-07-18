@@ -70,8 +70,7 @@ XCsubargs = {
     # post-stim window (s) for cross-correlation: 0.5-6 ms
     'pst_range': [0.0005, 0.006],  
     
-    # random trial splits per level (lower for speed)
-    # CR lowered N_shuffles from 500 to 100 to be faster
+    # random trial splits per level (can lower for speed, e.g. 100)
     'N_shuffles': 500,       
     
     # subaverage by median (vs 'mean')

@@ -56,7 +56,6 @@ metadata = shared.load_metadata(raw_data_directory)
 
 # Parse out
 mouse_metadata = metadata['mouse_metadata'].copy()
-recording_metadata = metadata['recording_metadata'].copy()
 experiment_metadata = metadata['experiment_metadata'].copy()
 
 # TODO: drop upstream

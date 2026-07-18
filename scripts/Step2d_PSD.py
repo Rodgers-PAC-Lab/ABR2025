@@ -8,9 +8,9 @@
 
 import os
 import json
-import datetime
 import numpy as np
 import pandas
+import my
 import my.plot
 import matplotlib.pyplot as plt
 import shared
@@ -167,6 +167,3 @@ with open(stats_filename) as fi:
 # Show
 plt.show()
 
-
-## Store
-big_Pxx.to_parquet(os.path.join(output_directory, 'big_Pxx'))

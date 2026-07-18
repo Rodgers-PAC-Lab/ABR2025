@@ -3,7 +3,7 @@
 # Plots
 #   PLOT_OUR_VS_PRESTO_THRESHOLDS
 #   PLOT_OUR_VS_PRESTO_THRESHOLDS_AFTER_HL
-# The threshold calculation is duplicated from Step5a_rms_and_threshold
+# The threshold calculation is duplicated from Step6a
 
 import os
 import json

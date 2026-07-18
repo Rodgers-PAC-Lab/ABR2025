@@ -4,7 +4,6 @@
 #   HEATMAP_CORRELATION_ACROSS_MICE
 
 import os
-import datetime
 import json
 import numpy as np
 import pandas
@@ -29,28 +28,13 @@ output_directory = paths['output_directory']
 
 
 ## Params
-sampling_rate = 16000  # TODO: store in recording_metadata
-
-
-## Load metadata
-metadata = shared.load_metadata(raw_data_directory)
-
-# Parse out
-mouse_metadata = metadata['mouse_metadata'].copy()
-recording_metadata = metadata['recording_metadata'].copy()
-experiment_metadata = metadata['experiment_metadata'].copy()
+sampling_rate = 16000
 
 
 ## Load previous results
 # Load results of Step2b_avg
-big_abrs = pandas.read_parquet(
-    os.path.join(output_directory, 'big_abrs'))
-averaged_abrs_by_mouse = pandas.read_parquet(
-    os.path.join(output_directory, 'averaged_abrs_by_mouse'))
 averaged_abrs_by_date = pandas.read_parquet(
     os.path.join(output_directory, 'averaged_abrs_by_date'))
-trial_counts = pandas.read_parquet(
-    os.path.join(output_directory, 'trial_counts'))
 
 
 ## Keep only after_HL == False
@@ -68,6 +52,10 @@ unstacked = averaged_abrs_by_date.unstack(
     ['channel', 'speaker_side', 'label']).reorder_levels(
     ['mouse', 'n_experiment']).sort_index()
 
+# Slice to the (0, 7.5) ms window used for most of the manuscript
+# (Data before t=0 can only add to noise so it is excluded)
+unstacked = unstacked.loc[:, 0:119]
+
 # Include only mice with multiple sessions
 sessions_per_mouse = unstacked.groupby('mouse').size()
 assert sessions_per_mouse.max() == 2
@@ -78,18 +66,11 @@ unstacked = unstacked.reindex(mice_with_multiple_sessions, level='mouse')
 # Correlate each row
 corr_across_sessions = unstacked.T.corr()
 
-#~ # Null the redundant comparisons
-#~ null_mask = np.tri(len(unstacked)).astype(bool)
-#~ corr_across_sessions.values[null_mask] = np.nan
-
 # Relabel the columns, fully stack, and reset index
 corr_across_sessions.columns.names = ['mouse2', 'n_experiment2']
 corr_across_sessions = corr_across_sessions.stack(
     future_stack=True).stack(future_stack=True).rename('corr')
 corr_across_sessions = corr_across_sessions.reset_index()
-
-# Drop nulls, including self comparisons
-#~ corr_across_sessions = corr_across_sessions.dropna()
 
 # Label 'within' and 'between'
 within_mask = corr_across_sessions['mouse'] == corr_across_sessions['mouse2']
@@ -137,7 +118,8 @@ corr_across_sessions = corr_across_sessions.loc[~(
 # The within-mouse corr is similar to the highest of those corrs (day0)
 # The fairest comparison is to use only 'forward' in all cases, because
 # 'same0' and 'same1' are trivial for within-mouse
-corr_across_sessions = corr_across_sessions[corr_across_sessions['order'] == 'forward']
+corr_across_sessions = corr_across_sessions[
+    corr_across_sessions['order'] == 'forward']
 
 
 ## Plots
@@ -155,16 +137,13 @@ if HIST_CORRELATION_ACROSS_MICE:
     
     # Histogram across mice
     ax.hist(
-        corr_across_sessions.loc[~within_mask, 'corr'], 
+        corr_across_sessions.loc[corr_across_sessions['typ'] == 'between', 'corr'],
         bins=bins, color='green', histtype='step')
     
     # Histogram within mouse
     ax.hist(
-        corr_across_sessions.loc[within_mask, 'corr'], 
+        corr_across_sessions.loc[corr_across_sessions['typ'] == 'within', 'corr'],
         bins=bins, color='k', alpha=.5)
-    
-    # Histogram within session
-    #~ ax.hist(within_mouse_corr, bins=bins, color='r', alpha=.5)
     
     # Pretty
     ax.set_xlim((0, 1))
@@ -174,10 +153,8 @@ if HIST_CORRELATION_ACROSS_MICE:
     ax.set_xlabel('correlation')
     ax.set_ylabel('# of comparisons')
     my.plot.despine(ax)
-    
-    #~ # Rather than a third histogram, plot the within-recording corr as a line
-    #~ ax.plot([within_mouse_corr.mean()] * 2, ax.get_ylim(), 'k--', lw=1)
-    
+
+    # Legend
     f.text(.5, .9, 'across mice', color='g', ha='center')
     f.text(.5, .82, 'within mouse', color='gray', ha='center')
 
@@ -187,26 +164,23 @@ if HIST_CORRELATION_ACROSS_MICE:
 
     
     ## Stats
-    # best way to compare these distrs would be resampling
-    across_mice_mean = corr_across_sessions.loc[~within_mask, 'corr'].mean()
-    across_mice_std = corr_across_sessions.loc[~within_mask, 'corr'].std()
-    within_mouse_mean = corr_across_sessions.loc[within_mask, 'corr'].mean()
-    within_mouse_std = corr_across_sessions.loc[within_mask, 'corr'].std()
+    # Mean and std of the correlation, within vs between mice
+    corr_by_typ = corr_across_sessions.groupby('typ')['corr']
+    corr_mean = corr_by_typ.mean()
+    corr_std = corr_by_typ.std()
 
     with open('figures/STATS__HIST_CORRELATION_ACROSS_MICE', 'w') as fi:
         n_mice = len(corr_across_sessions.loc[within_mask])
         fi.write(f'n = {n_mice} with multiple sessions\n')
         fi.write(f'forward comparisons only\n')
         fi.write('across mice mean R: {:.4f} (std = {:.4f})\n'.format(
-            across_mice_mean,
-            across_mice_std,
+            corr_mean['between'],
+            corr_std['between'],
             ))
         fi.write('within mouse, across sessions mean R: {:.4f} (std = {:.4f})\n'.format(
-            within_mouse_mean,
-            within_mouse_std,
+            corr_mean['within'],
+            corr_std['within'],
             ))
-        #~ fi.write('within sessions mean R: {:.4f}\n'.format(
-            #~ within_mouse_corr.mean()))
 
     with open('figures/STATS__HIST_CORRELATION_ACROSS_MICE') as fi:
         for line in fi.readlines():

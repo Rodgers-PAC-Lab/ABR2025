@@ -3,13 +3,11 @@
 #
 # Plots
 #   PLOT_EKG_GRAND_MEAN
-#   PLOT_EKG_SESSION_MEAN
+#   PLOT_EKG_BY_MOUSE
 #   PLOT_EKG_STATS
 
 import os
 import json
-import datetime
-import numpy as np
 import pandas
 import my.plot
 import matplotlib.pyplot as plt

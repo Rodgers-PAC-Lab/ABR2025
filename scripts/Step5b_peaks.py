@@ -2,22 +2,12 @@
 
 import os
 import json
-import datetime
-import matplotlib
-import scipy.signal
 import numpy as np
 import pandas
+import my
 import my.plot
-import matplotlib.pyplot as plt
-import seaborn
 import opensabr.peak_picking
 import shared
-
-
-## Plotting defaults
-my.plot.manuscript_defaults()
-my.plot.font_embed()
-MU = chr(956)
 
 
 ## Paths
@@ -38,21 +28,10 @@ sampling_rate = 16000
 minimum_ridge_length = 5
 
 
-## Load metadata
-metadata = shared.load_metadata(raw_data_directory)
-
-# Parse out
-mouse_metadata = metadata['mouse_metadata'].copy()
-recording_metadata = metadata['recording_metadata'].copy()
-experiment_metadata = metadata['experiment_metadata'].copy()
-    
-
 ## Load previous results
 # Load results of Step2b_avg
 averaged_abrs_by_date = pandas.read_parquet(
     os.path.join(output_directory, 'averaged_abrs_by_date'))
-trial_counts = pandas.read_parquet(
-    os.path.join(output_directory, 'trial_counts'))
 
 # Loudest dB
 loudest_db = averaged_abrs_by_date.index.get_level_values('label').max()
@@ -236,26 +215,31 @@ for keys, subdf in big_ridges_with_order.groupby(group_levels + ['level']):
     if len(badidx) > 0:
         bad_l.append(badidx)
 
-# Concat all out of order
-out_of_order = pandas.concat(bad_l, ignore_index=True)
 
-# Construct a MultiIndex to unlabel big_labeled_waves and big_ridges
-midx = pandas.MultiIndex.from_frame(
-    out_of_order[
-    group_levels + ['sign', 'n_ridge', 'wave_name']
-    ].drop_duplicates())
+## Deal with out of order waves, if any
+if len(bad_l) > 0:
+    
+    # Concat all out of order
+    out_of_order = pandas.concat(bad_l, ignore_index=True)
 
-# Unlabel - this two-step process avoids ChainedAssignmentError
-if len(midx) > 0:
+    # Construct a MultiIndex to unlabel big_labeled_waves and big_ridges
+    midx = pandas.MultiIndex.from_frame(
+        out_of_order[
+        group_levels + ['sign', 'n_ridge', 'wave_name']
+        ].drop_duplicates())
+
+    # Print warning (before dropping wave_name)
     print(f'warning: unlabeling {len(midx)} waves')
     print(midx.to_frame(index=False).to_string())
-midx = midx.droplevel('wave_name')
-big_ridges.loc[
-    my.misc.slice_df_by_some_levels(big_ridges, midx).index, 
-    'wave_name'] = np.nan
-big_labeled_waves = big_labeled_waves.drop(
-    my.misc.slice_df_by_some_levels(big_labeled_waves, midx).index, 
-    )
+    midx = midx.droplevel('wave_name')
+    
+    # Unlabel - this two-step process avoids ChainedAssignmentError
+    big_ridges.loc[
+        my.misc.slice_df_by_some_levels(big_ridges, midx).index, 
+        'wave_name'] = np.nan
+    big_labeled_waves = big_labeled_waves.drop(
+        my.misc.slice_df_by_some_levels(big_labeled_waves, midx).index, 
+        )
 
 
 ## Print out highest cost assignments

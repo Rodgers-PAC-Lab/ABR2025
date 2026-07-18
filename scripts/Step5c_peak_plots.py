@@ -65,8 +65,6 @@ averaged_abrs_by_date = averaged_abrs_by_date * 1e6
 # Results of peak-picking
 big_ridges = pandas.read_parquet(
     os.path.join(output_directory, 'big_ridges'))
-big_labeled_waves = pandas.read_parquet(
-    os.path.join(output_directory, 'big_labeled_waves'))
 
 
 ## Plot

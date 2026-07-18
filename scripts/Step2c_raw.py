@@ -44,7 +44,7 @@ experimenter_dir = os.path.join(raw_data_directory, date_s, experimenter)
 
 # ABR params
 abr_start_sample = -40
-abr_stop_sample = 120
+abr_stop_sample = 160
 abr_highpass_freq = 300
 abr_lowpass_freq = 3000
 
@@ -67,8 +67,8 @@ expected_amplitude = [
 log10_voltage = np.sort(np.log10(expected_amplitude) + 1.34)
 
 # SPL as measured with the ultrasonic microphone
-# Note: Subtract 30 dB here (average over 50 ms instead of 0.05 ms)
-amplitude_labels = np.linspace(45, 93, 13).astype(int) - 30 
+# Note: Subtract 20 dB here (average over 50 ms instead of 0.5 ms)
+amplitude_labels = np.linspace(45, 93, 13).astype(int) - 20 
 
 # Convert the voltages to cuts
 amplitude_cuts = (log10_voltage[1:] + log10_voltage[:-1]) / 2
