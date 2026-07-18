@@ -156,6 +156,7 @@ assert len(abr_presto_threshold_by_mouse) == len(paired)
 ## Plots
 PLOT_OUR_VS_PRESTO_THRESHOLDS = True
 PLOT_OUR_VS_PRESTO_THRESHOLDS_AFTER_HL = True
+PLOT_OUR_VS_PRESTO_THRESHOLDS_EXAMPLE_CONFIG = True
 
 
 if PLOT_OUR_VS_PRESTO_THRESHOLDS:
@@ -297,5 +298,66 @@ if PLOT_OUR_VS_PRESTO_THRESHOLDS_AFTER_HL:
     f.savefig('figures/PLOT_OUR_VS_PRESTO_THRESHOLDS_AFTER_HL.svg')
     f.savefig('figures/PLOT_OUR_VS_PRESTO_THRESHOLDS_AFTER_HL.png', dpi=300)    
 
+if PLOT_OUR_VS_PRESTO_THRESHOLDS_EXAMPLE_CONFIG:
+    """Our threshold vs ABRpresto's as connected pairs for one example config
+    
+    VR-L, pre-HL only. This example is nice because it shows that the outlier
+    mouse has the same threshold with both methods.
+    """
+    
+    # Slice out pre-HL only
+    this_paired = paired.xs(False, level='after_HL').droplevel('HL_type')
+    
+    # Slice out VR-L only
+    this_paired = this_paired.xs(
+        'L', level='speaker_side').xs('VR', level='channel')
+    
+    
+    ## Connected pairs
+    f, ax = my.plot.figure_1x1_small()
+    
+    # One connected pair per mouse
+    ax.plot(
+        this_paired.loc[:, ['ours', 'abrpresto']].values.T,
+        marker='o', color='gray', alpha=.4, markersize=4)
+    
+    # Pretty
+    ax.set_xticks([0, 1])
+    ax.set_xticklabels(['ours', 'ABRpresto'], rotation=45)
+    ax.set_ylabel('threshold (dB SPL)')
+    ax.set_yticks((30, 40, 50))
+    ax.set_ylim((25, 50))
+    ax.set_xlim(-.8, 1.8)
+    my.plot.despine(ax)
+    
+    # Savefig
+    f.savefig('figures/PLOT_OUR_VS_PRESTO_THRESHOLDS_EXAMPLE_CONFIG.svg')
+    f.savefig(
+        'figures/PLOT_OUR_VS_PRESTO_THRESHOLDS_EXAMPLE_CONFIG.png', dpi=300)
+    
+    
+    ## Swarm the difference
+    this_diff = this_paired['ours'] - this_paired['abrpresto']
+    
+    # Figure
+    f, ax = my.plot.figure_1x1_small()
+    f.subplots_adjust(left=.45, bottom=.1)
+    
+    # Swarm
+    seaborn.swarmplot(this_diff, ax=ax)
+    ax.axhline(0, color='k', linestyle='-', linewidth=.75)
+    
+    # Pretty
+    ax.set_ylabel('threshold difference (dB)\n(ours - ABRpresto)')
+    ax.set_ylim((-10, 10))
+    ax.set_yticks((-10, -5, 0, 5, 10))
+    my.plot.despine(ax, which=('bottom', 'top', 'right'))  
+    
+    # Savefig
+    f.savefig(
+        'figures/PLOT_OUR_VS_PRESTO_THRESHOLDS_EXAMPLE_CONFIG__swarm.svg')
+    f.savefig(
+        'figures/PLOT_OUR_VS_PRESTO_THRESHOLDS_EXAMPLE_CONFIG__swarm.png', 
+        dpi=300)
 
 plt.show()

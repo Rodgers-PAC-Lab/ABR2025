@@ -4,6 +4,7 @@
 
 import os
 import datetime
+import my
 import pandas
 
 def load_metadata(raw_data_directory):
@@ -47,8 +48,25 @@ def load_metadata(raw_data_directory):
     experiment_metadata = experiment_metadata.set_index(
         ['date', 'mouse']).sort_index()
     mouse_metadata = mouse_metadata.set_index('mouse').sort_index()        
+
+
+    ## TODO: exclude these upstream in Step 1
+    # Drop whole mouse (noisy)
+    mouse_metadata = mouse_metadata.drop('Pineapple_197')
+    recording_metadata = recording_metadata.drop('Pineapple_197', level='mouse')
+    experiment_metadata = experiment_metadata.drop('Pineapple_197', level='mouse')
+
+    # Drop specific recordings (done under iso)
+    midx = pandas.MultiIndex.from_tuples([
+        (datetime.date(2025, 6, 6), 'Cacti_223', 14),
+        (datetime.date(2025, 6, 6), 'Cacti_223', 15),
+        ], names=['date', 'mouse', 'recording']
+        )
+    recording_metadata = my.misc.slice_df_by_some_levels(
+        recording_metadata, midx, drop=True)
+
     
-    # Return
+    ## Return
     return {
         'mouse_metadata': mouse_metadata,
         'experiment_metadata': experiment_metadata,
