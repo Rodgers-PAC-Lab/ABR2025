@@ -63,6 +63,8 @@ if not os.path.exists(fig_dir):
 
 
 ## Params
+sampling_rate = 16000
+
 XCsubargs = {
     # RandomState seed; fixed for reproducible shuffles
     'seed': 0,               
@@ -93,12 +95,13 @@ XCsubargs = {
     'calc_XC0m_only': True,  
     
     # whether to make plots
-    'plot_results': True,    
+    'plot_results': False,    
     
     # no rounding
     'round_results': False,
     }
-sampling_rate = 16000
+
+# Skip sessions with fewer than this main trials per polarity
 min_trials_per_polarity = 20
 
 
@@ -108,8 +111,6 @@ big_triggered_neural = pandas.read_parquet(
     os.path.join(output_directory, 'big_triggered_neural'))
 big_triggered_neural_orig = big_triggered_neural.copy()
 
-
-## Format: columns samples -> seconds; polarity False/True -> -1/1
 # Label columns by time in seconds
 big_triggered_neural.columns = (big_triggered_neural.columns / sampling_rate).values
 big_triggered_neural.columns.name = 'time'
@@ -121,7 +122,7 @@ big_triggered_neural = big_triggered_neural.rename_axis(index={'label': 'level'}
 big_triggered_neural = big_triggered_neural.rename(
     index={True: 1, False: -1}, level='polarity')
 
-# Pull levels for later recomputation
+# Keep track of levels for later recomputation of sigmoid fit
 levels = np.sort(
     big_triggered_neural.index.get_level_values('level').unique().values)
 
@@ -157,8 +158,9 @@ for keys, this_group in tqdm.tqdm(big_triggered_neural.groupby(
         # Warn and continue
         tqdm.tqdm.write(f'warning: {session_name} has min {min_n} reps; skipping')
         continue
+    
     else:
-        # Succeeded
+        # Succeeded - check we had enough trials
         assert min_n >= min_trials_per_polarity
 
     # Savefig
@@ -171,6 +173,7 @@ for keys, this_group in tqdm.tqdm(big_triggered_neural.groupby(
     if this_fit['fit_XC0m']['sigmoid_fit'] is None:
         sigmoid_sse = None
         sigmoid_params = [np.nan, np.nan, np.nan, np.nan]
+    
     else:
         sigmoid_sse = this_fit['fit_XC0m']['sigmoid_fit']['sse']
         sigmoid_params = this_fit['fit_XC0m']['sigmoid_fit']['params']
@@ -213,15 +216,15 @@ threshold_df = pandas.DataFrame(scalar_l, index=keys_midx)
 sigmoid_params_df = pandas.DataFrame(
     sigmoid_params_l, index=keys_midx,
     columns=['amplitude', 'slope', 'x0', 'baseline'])
-xc0mean_df = pandas.DataFrame(
-    xc0mean_l, index=keys_midx,
-    columns=levels)
-xc0std_df = pandas.DataFrame(
-    xc0std_l, index=keys_midx,
-    columns=levels)
+xc0mean_df = pandas.DataFrame(xc0mean_l, index=keys_midx, columns=levels)
+xc0std_df = pandas.DataFrame(xc0std_l, index=keys_midx, columns=levels)
 
 # Save
-threshold_df.to_parquet(os.path.join(output_directory, 'abr_presto_threshold_df'))
-sigmoid_params_df.to_parquet(os.path.join(output_directory, 'abr_presto_sigmoid_params_df'))
-xc0mean_df.to_parquet(os.path.join(output_directory, 'abr_presto_xc0mean_df'))
-xc0std_df.to_parquet(os.path.join(output_directory, 'abr_presto_xc0std_df'))
+threshold_df.to_parquet(
+    os.path.join(output_directory, 'abr_presto_threshold_df'))
+sigmoid_params_df.to_parquet(
+    os.path.join(output_directory, 'abr_presto_sigmoid_params_df'))
+xc0mean_df.to_parquet(
+    os.path.join(output_directory, 'abr_presto_xc0mean_df'))
+xc0std_df.to_parquet(
+    os.path.join(output_directory, 'abr_presto_xc0std_df'))

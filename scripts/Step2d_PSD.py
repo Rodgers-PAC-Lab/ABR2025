@@ -51,21 +51,11 @@ experiment_metadata = metadata['experiment_metadata'].copy()
 big_Pxx = pandas.read_parquet(
     os.path.join(output_directory, 'big_Pxx'))
 
-
-## Join sex and HL on big_Pxx
-to_join = experiment_metadata[['after_HL', 'experimenter']].copy()
-to_join['experimenter'] = to_join['experimenter'].replace({'cedric': 'Cedric'})
-big_Pxx = my.misc.join_level_onto_index(big_Pxx, to_join)
+# Like elsewhere, keep only the first pre-HL experiment
 big_Pxx = my.misc.join_level_onto_index(
-    big_Pxx, mouse_metadata[['sex', 'HL_type']])
-
-# TODO: make figures showing this
-# after_HL does not change much, except possibly a global attenuation
-# sex causes changes in the putative EMG range (300-600 Hz)
-# There may also be experimenter differences
-# For now, drop these levels and continue
-big_Pxx = big_Pxx.droplevel(
-    ['sex', 'experimenter', 'HL_type', 'after_HL']).sort_index()
+    big_Pxx, experiment_metadata[['after_HL', 'n_experiment']])
+big_Pxx = big_Pxx.xs(
+    False, level='after_HL').xs(0, level='n_experiment')
 
 
 ## Compute average PSD
@@ -83,7 +73,6 @@ n_recordings = topl.groupby('channel').size().unique().item()
 n_mice = len(topl.groupby('mouse').size())
 
 # Aggregate within mouse first
-# TODO: drop post-HL (and maybe all after 1st session per mouse)
 by_mouse = topl.groupby(['mouse', 'channel']).mean()
 
 # Aggregate across mice
@@ -157,6 +146,7 @@ stats_filename = 'figures/STATS__PSD_BY_CHANNEL'
 with open(stats_filename, 'w') as fi:
     fi.write(stats_filename + '\n')
     fi.write(f'n = {n_recordings} recordings from n = {n_mice} mice\n')
+    fi.write('first experiment only for each mouse\n')
     fi.write('aggregated within mouse and then across mice\n')
     fi.write('error bars: SEM over mice\n')
 

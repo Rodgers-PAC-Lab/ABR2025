@@ -59,7 +59,7 @@ output_directory = paths['output_directory']
 
 ## Params
 duration_ms = streamlit.session_state.time_scale
-duration_samples = int(np.rint(16e3 * duration_ms / 1e3))
+duration_samples = int(np.rint(16 * duration_ms))
 
 
 ## Load data

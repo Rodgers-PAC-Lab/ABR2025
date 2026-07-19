@@ -32,7 +32,6 @@ output_directory = paths['output_directory']
 
 ## Params
 # Specify which date and experimenter to process
-# Previously: PizzaSlice7 rec2 on 2025-2-28
 abr_date = datetime.date(year=2025, month=5, day=20)
 mouse = 'Cat_229'
 experimenter = 'rowan'

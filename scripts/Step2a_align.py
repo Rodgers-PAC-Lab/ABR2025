@@ -180,32 +180,6 @@ for date, mouse, recording in tqdm.tqdm(recording_metadata.index):
         ekg_signal, columns=neural_data_df.columns, index=neural_data_df.index)
 
     # Find heartbeats, indexed into ekg_signal
-    # 
-    # SHAPE OF EKG
-    # Use the first channel (LR), which is biggest
-    # The peak is always positive on LR and LV, and negative on RV
-    # LV and RV are nearly opposites, so LR is about double
-    # The central peak is maybe 5 ms wide and the whole thing is maybe 25 ms
-    # Because it's stored as RL, invert to form LR
-    #
-    # HEIGHT and PROMINENCE
-    # The lowest SNR recording is Cat_229 on 2025-05-15, esp recording 1
-    # On this recording, the heights are 40-50 uV and prominences 50-60
-    # Prominences are larger because of the dip around the peak
-    # Breathing artefacts can get up to 25
-    # There is a kind of bimodality in the raw EKG signal with a dip around 27
-    # A threshold of 35 seems appropriate, we probably would prefer to lose
-    # a few heartbeats than to pick up too much noise
-    #
-    # INTER-BEAT INTERVAL ("DISTANCE")
-    # The inter-beat-interval is 3000-7500 samples (187-469 ms)
-    # Enforce a minimum of 1000 samples
-    #
-    # WIDTH
-    # The main peak is about 5 ms wide (80 samples), so set wlen to 150
-    # The 'width' criterion is actually a half-width if rel_height is 0.5
-    # For some reason there's another, narrower mode in widths, around half-width 35
-    # So use a wide range of (10, 100) on width
     ekg_threshold = 35e-6 # V
     peak_times, peak_props = scipy.signal.find_peaks(
         -ekg_signal.loc[:, 'RL'], # invert

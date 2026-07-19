@@ -4,7 +4,6 @@
 # Plots
 #   PLOT_EKG_GRAND_MEAN
 #   PLOT_EKG_BY_MOUSE
-#   PLOT_EKG_STATS
 
 import os
 import json
@@ -51,7 +50,6 @@ experiment_metadata = metadata['experiment_metadata'].copy()
 
 ## Load previous results
 # Load results of Step2a1_align
-# PowerRainbow2 looks a bit blunted and slow, but not totally out of the realm
 big_heartbeat_info = pandas.read_parquet(
     os.path.join(output_directory, 'big_heartbeat_info'))
 big_heartbeat_waveform = pandas.read_parquet(
@@ -84,7 +82,6 @@ stats_by_session['IBI'] = big_heartbeat_info['sample'].diff().dropna().groupby(
 ## Plots
 PLOT_EKG_GRAND_MEAN = True
 PLOT_EKG_BY_MOUSE = True
-PLOT_EKG_STATS = True
 
 if PLOT_EKG_GRAND_MEAN:
     # Mean over mouse
@@ -144,6 +141,7 @@ if PLOT_EKG_GRAND_MEAN:
     with open(stats_filename, 'w') as fi:
         fi.write(stats_filename + '\n')
         fi.write(f'n = {n_sessions} sessions from {n_mice} mice\n')
+        fi.write(f'aggregated within mouse, then across mice\n')
         fi.write('error bars: SEM\n')
     
     # Echo
@@ -182,28 +180,6 @@ if PLOT_EKG_BY_MOUSE:
     f.savefig('figures/PLOT_EKG_BY_MOUSE.svg')
     f.savefig('figures/PLOT_EKG_BY_MOUSE.png', dpi=300)
 
-
-if PLOT_EKG_STATS:
-    # Histogram height, prominence, width, and IBI by session
-    # Height: mode at 72, range 50-140, long tail to 210, min 50
-    # Prominence: mode at 100, range 60-150, long tail to 250, min 55
-    # Width: bimodal; mode at 40, dip at 48, mode at 56, long tail to 68
-    # IBI: range 250-375, mode 275, min 200, max 500
-    f, axa = plt.subplots(1, 4, figsize=(12, 3))
-    axa[0].hist(stats_by_session['peak_heights'] * 1e6, bins=21)
-    axa[0].set_xlabel('height (uV)')
-    axa[1].hist(stats_by_session['prominences'] * 1e6, bins=21)
-    axa[1].set_xlabel('prominence (uV)')
-    axa[2].hist(stats_by_session['widths'], bins=21)
-    axa[2].set_xlabel('width (samples)')
-    axa[3].hist(stats_by_session['IBI'] / sampling_rate * 1000, bins=21)
-    axa[3].set_xlabel('IBI (ms)')
-    f.tight_layout()
-    f.savefig('figures/PLOT_EKG_STATS.svg')
-    f.savefig('figures/PLOT_EKG_STATS.png', dpi=300)
-
-    # These narrow and wide ones seem to have fairly similar shapes, just stretched
-    #~ mask = by_session['widths'] < 47
 
 plt.show()
 

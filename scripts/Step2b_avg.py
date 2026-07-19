@@ -65,23 +65,6 @@ big_click_params = pandas.read_parquet(
 loudest_db = big_triggered_neural.index.get_level_values('label').max()
 
 
-## TODO: Exclude upstream
-# Drop whole mouse (noisy)
-big_triggered_neural = big_triggered_neural.drop('Pineapple_197', level='mouse')
-big_click_params = big_click_params.drop('Pineapple_197', level='mouse')
-
-# Drop specific recordings (done under iso)
-midx = pandas.MultiIndex.from_tuples([
-    (datetime.date(2025, 6, 6), 'Cacti_223', 14),
-    (datetime.date(2025, 6, 6), 'Cacti_223', 15),
-    ], names=['date', 'mouse', 'recording']
-    )
-big_triggered_neural = my.misc.slice_df_by_some_levels(
-    big_triggered_neural, midx, drop=True)
-big_click_params = my.misc.slice_df_by_some_levels(
-    big_click_params, midx, drop=True)
-
-
 ## Join on speaker_side
 # Should have done this at the same time as joining channel
 idx = big_triggered_neural.index.to_frame().reset_index(drop=True)
@@ -240,11 +223,11 @@ if PLOT_SINGLE_TRIAL_ABR:
     # Slice out loudest only
     single_trial_abr = single_trial_abr.xs(loudest_db, level='label')
 
+    # Plot handles
     f, ax = plt.subplots(figsize=(3.5, 2.5))
     f.subplots_adjust(bottom=.24, left=.25, right=.95, top=.89)
 
-    #~ f, ax = plt.subplots(figsize=(3.75, 2.5))
-    #~ f.subplots_adjust(bottom=.24, left=.18, right=.95, top=.89)
+    # Plot
     ax.plot(
         single_trial_abr.columns.values / 16e3 * 1000,
         single_trial_abr.T * 1e6, 
