@@ -128,10 +128,6 @@ abr_presto_threshold_df = abr_presto_threshold_df.reorder_levels([
     'speaker_side', 'channel', 
     ]).sort_index()
 
-# Drop mouse (TODO: handle upstream)
-abr_presto_threshold_df = abr_presto_threshold_df.drop(
-    'Pineapple_197', level='mouse')
-
 
 ## Aggregate ABRpresto results
 # First aggregate over recording
@@ -163,12 +159,9 @@ if PLOT_OUR_VS_PRESTO_THRESHOLDS:
     ## Plot our threshold vs ABRPresto's as connected pairs for all configs
     # For this one, do pre_HL only
     
-    # The major outlier is Pineapple_197 RL-R, and I think ABRpresto correctly
-    # reveals noise in that recording, though there is also enough signal
-    # for our method to work
-    # Another outlier is NoBadVibes10 VL-L, where we had a small signal
-    # that wasn't enough to cross our threshold, and ABRpresto is probably
-    # more correct
+    # An outlier is NoBadVibes10 VL-L, where we had a small signal
+    # that wasn't enough to cross our threshold, so we assigned a high threshold
+    # but apparently the response became consistent at the lower (typical) level
 
     # Slice out pre-HL only
     paired_pre_HL = paired.xs(False, level='after_HL').droplevel('HL_type')
@@ -302,7 +295,7 @@ if PLOT_OUR_VS_PRESTO_THRESHOLDS_EXAMPLE_CONFIG:
     """Our threshold vs ABRpresto's as connected pairs for one example config
     
     VR-L, pre-HL only. This example is nice because it shows that the outlier
-    mouse has the same threshold with both methods.
+    mouse with a high threshold has the same threshold with both methods.
     """
     
     # Slice out pre-HL only

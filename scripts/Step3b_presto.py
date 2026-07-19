@@ -8,20 +8,17 @@ See README for further instructions
 
 Expected warnings:
 ---
-warning: 2025-05-09__Cat_227__1__RL has min 18 reps; skipping                                                                     
-warning: 2025-05-09__Cat_227__1__VL has min 18 reps; skipping                                                                     
-warning: 2025-05-09__Cat_227__1__VR has min 18 reps; skipping                                                                     
-warning: 2025-06-06__Cacti_223__11__RL has min 7 reps; skipping                                                                   
-warning: 2025-06-06__Cacti_223__11__VL has min 7 reps; skipping                                                                   
-warning: 2025-06-06__Cacti_223__11__VR has min 7 reps; skipping                                                                   
-warning: 2025-06-06__Cacti_223__12__RL has min 13 reps; skipping                                                                  
-warning: 2025-06-06__Cacti_223__12__VL has min 13 reps; skipping                                                                  
-warning: 2025-06-06__Cacti_223__12__VR has min 13 reps; skipping                                                                  
-warning: 2025-06-06__Cacti_223__15__RL has min 5 reps; skipping                                                                   
-warning: 2025-06-06__Cacti_223__15__VL has min 5 reps; skipping                                                                   
-warning: 2025-06-06__Cacti_223__15__VR has min 5 reps; skipping                                                                   
-warning: 2025-06-06__Cacti_224__7__RL has min 18 reps; skipping                                                                   
-warning: 2025-06-06__Cacti_224__7__VL has min 18 reps; skipping                                                                   
+warning: 2025-05-09__Cat_227__1__RL has min 18 reps; skipping                                                                                                 
+warning: 2025-05-09__Cat_227__1__VL has min 18 reps; skipping                                                                                                 
+warning: 2025-05-09__Cat_227__1__VR has min 18 reps; skipping                                                                                                 
+warning: 2025-06-06__Cacti_223__11__RL has min 7 reps; skipping                                                                                               
+warning: 2025-06-06__Cacti_223__11__VL has min 7 reps; skipping                                                                                               
+warning: 2025-06-06__Cacti_223__11__VR has min 7 reps; skipping                                                                                               
+warning: 2025-06-06__Cacti_223__12__RL has min 13 reps; skipping                                                                                              
+warning: 2025-06-06__Cacti_223__12__VL has min 13 reps; skipping                                                                                              
+warning: 2025-06-06__Cacti_223__12__VR has min 13 reps; skipping                                                                                              
+warning: 2025-06-06__Cacti_224__7__RL has min 18 reps; skipping                                                                                               
+warning: 2025-06-06__Cacti_224__7__VL has min 18 reps; skipping                                                                                               
 warning: 2025-06-06__Cacti_224__7__VR has min 18 reps; skipping  
 """
 import os

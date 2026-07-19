@@ -49,15 +49,13 @@ experiment_metadata = metadata['experiment_metadata'].copy()
 
 ## Load previous results
 # Load results of Step2b_avg
-big_abrs = pandas.read_parquet(
-    os.path.join(output_directory, 'big_abrs'))
+# Because we only use averaged_abrs_by_mouse, we are using only the 
+# first experiment from each mouse
 averaged_abrs_by_mouse = pandas.read_parquet(
     os.path.join(output_directory, 'averaged_abrs_by_mouse'))
-averaged_abrs_by_date = pandas.read_parquet(
-    os.path.join(output_directory, 'averaged_abrs_by_date'))
 
 # Loudest dB
-loudest_db = big_abrs.index.get_level_values('label').max()
+loudest_db = averaged_abrs_by_mouse.index.get_level_values('label').max()
   
 
 ## Cross-correlate over level to measure delay
@@ -71,12 +69,12 @@ for (grouped_keys), subdf in averaged_abrs_by_mouse.groupby(grouping_keys):
     
     # Correlate each with the loudest
     for level in subdf.index:
+        
         # Slice and convert to uV
         x1 = subdf.loc[level] * 1e6
         x2 = subdf.loc[loudest_db] * 1e6
         
         # Xcorr
-        # TODO: confirm that positive delays means x1 lags x2
         counts, corrn = my.misc.correlate(x1, x2, mode='same')
         
         # Minimize noise by looking for values in expected range (<0.75 ms)
@@ -250,6 +248,7 @@ if GRAND_AVG_ABR_PLOT:
         stats_filename = f'figures/STATS__GRAND_AVG_ABR_PLOT__{plot_type}'
         with open(stats_filename, 'w') as fi:
             fi.write(f'n = {n_mice} mice\n')
+            fi.write(f'first experiment from each mouse only\n')
         
         # Echo
         print(stats_filename)
@@ -374,6 +373,7 @@ if GRAND_AVG_ABR_PLOT_PERI_HL:
         stats_filename = f'figures/STATS__GRAND_AVG_ABR_PLOT_PERI_HL__{speaker_side}'
         with open(stats_filename, 'w') as fi:
             fi.write(f'n = {n_mice} mice\n')
+            fi.write(f'first experiment from each mouse only\n')
         
         # Echo
         print(stats_filename)
@@ -484,6 +484,7 @@ if GRAND_AVG_IMSHOW:
         stats_filename = f'figures/STATS__GRAND_AVG_IMSHOW__{plot_type}'
         with open(stats_filename, 'w') as fi:
             fi.write(f'n = {n_mice} mice\n')
+            fi.write(f'first experiment from each mouse only\n')
         
         # Echo
         print(stats_filename)
@@ -587,6 +588,7 @@ if GRAND_AVG_IMSHOW_PERI_HL:
         stats_filename = f'figures/STATS__GRAND_AVG_IMSHOW_PERI_HL__{speaker_side}'
         with open(stats_filename, 'w') as fi:
             fi.write(f'n = {n_mice} mice\n')
+            fi.write(f'first experiment from each mouse only\n')
         
         # Echo
         print(stats_filename)
@@ -652,97 +654,12 @@ if GRAND_AVG_IPSI_VS_CONTRA:
     stats_filename = f'figures/STATS__GRAND_AVG_IPSI_VS_CONTRA'
     with open(stats_filename, 'w') as fi:
         fi.write(f'n = {n_mice} mice\n')
+        fi.write(f'first experiment from each mouse only\n')
     
     # Echo
     print(stats_filename)
     with open(stats_filename) as fi:
         print(''.join(fi.readlines()))
-
-
-## Graveyard code for estimating delay between ipsi and contra
-if False:
-    ## Resample
-    # This will ring for about 20 samples near the window edges, but that
-    # is far from the time that we care about
-    resample_factor = 10
-    new_len = this_averaged_abrs.shape[1] * resample_factor
-    resampled, new_t = scipy.signal.resample(
-        this_averaged_abrs, new_len, t=loudest.columns, axis=1)
-    
-    # The columns are weirdly a float into the original sample count
-    resampled_df = pandas.DataFrame(
-        resampled,
-        index=this_averaged_abrs.index,
-        columns=pandas.Index(new_t, name=this_averaged_abrs.columns.name),
-        )
-
-
-    ## Plot the delay between ipsi and contra
-    winsize_ms = 1
-    halfwinsize_samples = int(np.rint(winsize_ms * sampling_rate / 1000 * resample_factor / 2))
-
-    # Iterate
-    peak_res_l = []
-    for mouse in this_averaged_abrs.index.get_level_values('mouse').unique():
-        for channel in ['VL', 'VR']:
-            # Determine which is which
-            if channel == 'VL':
-                ipsi_speaker = 'L'
-                contra_speaker = 'R'
-            else:
-                ipsi_speaker = 'R'
-                contra_speaker = 'L'
-            
-            # Slice
-            ipsi_resp = resampled_df.loc[mouse].loc[channel].loc[ipsi_speaker]
-            contra_resp = resampled_df.loc[mouse].loc[channel].loc[contra_speaker]
-    
-            # Moving xcorr
-            for n_center_col in range(len(resampled_df.columns)):
-                # Get start and stop indices
-                start = n_center_col - halfwinsize_samples
-                stop = n_center_col + halfwinsize_samples
-                if start < 0 or stop >= len(resampled_df.columns):
-                    continue
-                
-                # Convert n_center_col to actual time
-                center_t = resampled_df.columns[n_center_col] / sampling_rate
-                
-                # Correlate ipsi vs contra
-                # This will be biased toward zero-lag because of the zero-padding
-                counts, corrn = my.misc.correlate(
-                    ipsi_resp.iloc[:, start:stop].T, #loc[63],
-                    contra_resp.iloc[:, start:stop].T, #.loc[63],
-                    mode='same')   
-    
-                # Mean over sound levels
-                counts = counts.mean(axis=1)
-    
-                # Find peak
-                # Positive peak_idx means that the second signal leads the first one
-                peak_idx = corrn[counts.argmax()]
-                peak_val = counts.max()
-                
-                # Store
-                peak_res_l.append({
-                    'mouse': mouse,
-                    'channel': channel,
-                    'center_t': center_t,
-                    'peak_idx': peak_idx,
-                    })
-
-    # DataFrame
-    peak_df = pandas.DataFrame.from_records(peak_res_l)
-    
-    # Aggregate over channel
-    peak_df2 = peak_df.groupby(['mouse', 'center_t'])['peak_idx'].mean().unstack('mouse')
-    
-    # Plot
-    f, ax = plt.subplots()
-    ax.plot(
-        peak_df2.index * 1000,
-        (peak_df2.values / resample_factor / sampling_rate * 1000),
-        )
 
 
 if GRAND_AVG_LR_LEFT_VS_RIGHT:
@@ -799,6 +716,7 @@ if GRAND_AVG_LR_LEFT_VS_RIGHT:
     stats_filename = f'figures/STATS__GRAND_AVG_LR_LEFT_VS_RIGHT'
     with open(stats_filename, 'w') as fi:
         fi.write(f'n = {n_mice} mice\n')
+        fi.write(f'first experiment from each mouse only\n')
     
     # Echo
     print(stats_filename)
@@ -859,6 +777,8 @@ if GRAND_AVG_ONE_SIDE_ONLY:
     stats_filename = f'figures/STATS__GRAND_AVG_ONE_SIDE_ONLY'
     with open(stats_filename, 'w') as fi:
         fi.write(f'n = {n_mice} mice\n')
+        fi.write(f'first experiment from each mouse only\n')
+        fi.write(f'sound from right only\n')
     
     # Echo
     print(stats_filename)
@@ -907,7 +827,7 @@ if PLOT_DELAY_VS_LEVEL:
     slope_by_mouse = slope_df['slope'].groupby('mouse').mean()
     
     # Convert to us/dB
-    slope_by_mouse = slope_by_mouse / 16e3 * 1e6
+    slope_by_mouse = slope_by_mouse / sampling_rate * 1e6
     
     # Agg
     slope_by_mouse_mu = slope_by_mouse.mean()
@@ -923,7 +843,7 @@ if PLOT_DELAY_VS_LEVEL:
     # LV and RV are closer to linear, LR accelerates more with level, and
     # has a weird jog at the loudest levels
     to_agg = this_corr_df['idx'].groupby(
-        ['mouse', 'label']).mean().unstack('mouse') / 16e3 * 1e3
+        ['mouse', 'label']).mean().unstack('mouse') / sampling_rate * 1e3
     
     # Plot each mouse
     ax.plot(to_agg, lw=1, alpha=.5, color='k')
@@ -932,13 +852,6 @@ if PLOT_DELAY_VS_LEVEL:
     n_mice = to_agg.shape[1]
     topl_mu = to_agg.mean(axis=1)
     topl_err = to_agg.sem(axis=1)
-    #~ ax.plot(topl_mu, lw=1.5, color='r')
-    #~ ax.fill_between(
-        #~ x=topl_mu.index,
-        #~ y1=topl_mu - topl_err,
-        #~ y2=topl_mu + topl_err,
-        #~ alpha=.5, lw=0, color='k',
-        #~ )
     
     # Pretty
     my.plot.despine(ax)
@@ -963,7 +876,7 @@ if PLOT_DELAY_VS_LEVEL:
     
     ## Stats
     with open('figures/STATS__PLOT_DELAY_VS_LEVEL', 'w') as fi:
-        fi.write('take corr_df defined above, excluding after_HL ')
+        fi.write('take corr_df defined above, excluding after_HL, only >34dB, ')
         fi.write('(mouse * channel * speaker_side * label)\n')
         fi.write('groupby mouse * label, meaning out channel * speaker_side\n')
         fi.write('plot the above, with SEM over mice\n')

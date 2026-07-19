@@ -1,4 +1,4 @@
-## Peak picking plots
+## Plots relating to peak picking, excluding those that require ABRA results
 
 import os
 import json
@@ -82,9 +82,10 @@ if STRIP_PLOT_LATENCIES:
     
     Makes two figures:
     - first_rec_VRL_only - only shows first recording per mouse, only shows
-      VR-L, thus there is only one point per mouse * wave * level
+        VR-L, thus there is only one point per mouse * wave * level
     - preHL - pools over recordings, experiments, channels, and speaker side
-      Showing all the points like this is useful to look for outliers
+        Showing all the points like this is useful to look for outliers across
+        all configs
     """
 
     # Conditions: (suffix, sliced big_ridges)
@@ -166,6 +167,7 @@ if PLOT_EXAMPLE_WATERFALL:
     # Plot each level, offset by its rank
     level_offset_y = 2.0
     for n_level, level in enumerate(all_levels):
+        
         # Slice
         topl = example_abr.loc[
             level, start_timepoint:stop_timepoint-1].copy()
@@ -510,6 +512,7 @@ if PLOT_PEAK_METRIC_BY_WAVE_AND_CONFIG:
             assert (this_wave.groupby('mouse')['config'].nunique() == 4).all()
             
             # AOV
+            # Drop the mouse fits (not interesting)
             aov = my.stats.anova(
                 this_wave, f'{metric} ~ channel + ipsi + speaker_side + mouse')
             aov_pvals_l.append(aov['pvals'])

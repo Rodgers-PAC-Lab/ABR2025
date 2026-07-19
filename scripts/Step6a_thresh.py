@@ -58,10 +58,6 @@ metadata = shared.load_metadata(raw_data_directory)
 mouse_metadata = metadata['mouse_metadata'].copy()
 experiment_metadata = metadata['experiment_metadata'].copy()
 
-# TODO: drop upstream
-mouse_metadata = mouse_metadata.drop('Pineapple_197')
-experiment_metadata = experiment_metadata.drop('Pineapple_197', level='mouse')
-
 
 ## Load previous results
 # Load results of Step2b_avg
@@ -567,8 +563,10 @@ if PLOT_ABR_POWER_VS_AGE:
             'then correlated with age (meaned over recordings)\n'
             )
         fi.write(
-            f'response vs age: p={vs_response.pvalue:.4f}; r={vs_response.rvalue:.2f}; r2={vs_response.rvalue ** 2:.2f}\n'
-            f'thresh vs age: p={vs_thresh.pvalue:.4f}; r={vs_thresh.rvalue:.2f}; r2={vs_thresh.rvalue ** 2:.2f}\n'
+            f'response vs age: p={vs_response.pvalue:.4f}; '
+            f'r={vs_response.rvalue:.2f}; r2={vs_response.rvalue ** 2:.2f}\n'
+            f'thresh vs age: p={vs_thresh.pvalue:.4f}; '
+            f'r={vs_thresh.rvalue:.2f}; r2={vs_thresh.rvalue ** 2:.2f}\n'
             )
     
     # Echo
@@ -966,8 +964,6 @@ if BASELINE_VS_N_TRIALS:
     with open(stats_filename) as fi:
         print(''.join(fi.readlines()))
     
-
-
 
 if PLOT_RMS_GROWTH_FUNCTIONS_W1_W4:
     """RMS growth functions at the W1 and W4 timepoints

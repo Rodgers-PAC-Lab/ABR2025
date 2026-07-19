@@ -1,4 +1,4 @@
-## Peak picking plots
+## Run the ridge-tracing algorithm to identify waves
 
 import os
 import json
@@ -26,6 +26,18 @@ sampling_rate = 16000
 # The minimum length of a ridge in levels. Shorter ridges are discarded
 # Lower is more sensitive for weak responses but might cause false labels
 minimum_ridge_length = 5
+
+# This is the maximum allowable cost of a wave assignment to a ridge
+# This param is tricky to set
+# When it's too low, we lose the waves we need for analysis
+# When it's too high (lenient), it's not just that there are more false
+# positives, it can also cause a "frame shift" because those false positives
+# grab waves belonging to others, causing a cascade of errors
+# Current value is fairly strict
+max_label_cost = 0.15
+
+# Other params are defined in opensabr.peak_picking, including the typical
+# peak latencies used for assigning wave names
 
 
 ## Load previous results
@@ -121,8 +133,6 @@ for recording_keys, recording_ridges in big_ridges.groupby(group_levels):
         latency_us = ridge['timepoint'].values / sampling_rate * 1e6
 
         # Compute the slope and intercept of each ridge's latency-vs-level
-
-        # Fit a line
         slope, intercept = np.polyfit(levels_db, latency_us, deg=1)
         coef_l.append({
             'sign': sign,
@@ -136,31 +146,28 @@ for recording_keys, recording_ridges in big_ridges.groupby(group_levels):
         ['sign', 'n_ridge'])
     
     # Label the ridges - pos and neg separately
-    # Of W1p, W1n, W2p and W4p (the ones we care about), the hardest one is 
-    # Cacti_225 VL-L W4p with a cost of 0.14
-    # There are a variety of assignments between 0.14 and 0.2 but not waves
-    # we care about (so include them)
-    # Then nothing above 0.253 (except for out-of-order assignments that get
-    # dropped anyway)
     this_labeled_l = []
     this_labeled_keys_l = []
     for sign, this_rrc in recording_ridge_coefs.groupby('sign'):
+        
         # Droplevel
         this_rrc = this_rrc.droplevel('sign')
         
-        # Set coefs
+        # Pick peaks according to the sign
+        # The centroids are fit to the typical locations of the waves in 
+        # our data and would have to be adjusted for other data
+        assert sign in ['pos', 'neg']
         if sign == 'pos':
             this_labeled = opensabr.peak_picking.label_ridges(
                 recording_ridge_coefs.loc['pos'], 
                 opensabr.peak_picking.wave_centroids_pos, 
-                max_cost=0.15)
+                max_cost=max_label_cost)
+        
         elif sign == 'neg':
             this_labeled = opensabr.peak_picking.label_ridges(
                 recording_ridge_coefs.loc['neg'], 
                 opensabr.peak_picking.wave_centroids_neg, 
-                max_cost=0.15)
-        else:
-            1/0
+                max_cost=max_label_cost)
         
         # Reindex
         this_labeled = this_labeled.set_index('n_ridge')
@@ -215,8 +222,7 @@ for keys, subdf in big_ridges_with_order.groupby(group_levels + ['level']):
     if len(badidx) > 0:
         bad_l.append(badidx)
 
-
-## Deal with out of order waves, if any
+# Deal with out of order waves, if any
 if len(bad_l) > 0:
     
     # Concat all out of order
@@ -243,6 +249,7 @@ if len(bad_l) > 0:
 
 
 ## Print out highest cost assignments
+# This can be used as a diagnostic to set the cost threshold
 print(big_labeled_waves.sort_values('cost').iloc[-30:])
 
 

@@ -379,12 +379,12 @@ if PLOT_LATENCY_ABRA_VS_OURS:
 
     # Drop nulls (found by ours but not ABRA, this is very rare)
     drop_mask = paired['their_ms'].isnull()
-    print(f'dropping {drop_mask.sum()} points')
+    print(f'dropping {drop_mask.sum()} peaks found by ours but not ABRA')
     paired = paired.loc[~drop_mask]
 
     # Drop nulls (found by ABRA but not ours, this is common)
     drop_mask = paired['our_ms'].isnull()
-    print(f'dropping {drop_mask.sum()} points')
+    print(f'dropping {drop_mask.sum()} peaks found by ABRA but not ours')
     paired = paired.loc[~drop_mask]
     assert not paired.isnull().any().any()
     

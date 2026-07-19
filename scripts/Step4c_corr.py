@@ -36,17 +36,12 @@ sampling_rate = 16000
 averaged_abrs_by_date = pandas.read_parquet(
     os.path.join(output_directory, 'averaged_abrs_by_date'))
 
-
-## Keep only after_HL == False
-big_abrs = big_abrs.xs(False, level='after_HL').droplevel('HL_type')
-averaged_abrs_by_mouse = averaged_abrs_by_mouse.xs(False, level='after_HL').droplevel('HL_type')
-averaged_abrs_by_date = averaged_abrs_by_date.xs(False, level='after_HL').droplevel('HL_type')
+# Keep only after_HL == False
+averaged_abrs_by_date = averaged_abrs_by_date.xs(
+    False, level='after_HL').droplevel('HL_type')
 
 
-## Cross-correlate within and between mice to measure consistency
-# TODO: to make this more comparable to the within-session analysis below, 
-# correlate date * mouse * speaker_side * channel separately and then aggregate
-
+## Cross-correlate within and between mice
 # Get date * mouse on the rows
 unstacked = averaged_abrs_by_date.unstack(
     ['channel', 'speaker_side', 'label']).reorder_levels(
