@@ -226,6 +226,8 @@ if PLOT_OUR_VS_PRESTO_THRESHOLDS:
         )
     ax.axhline(0, color='k', linestyle='-', linewidth=.75)
     ax.set_ylabel('threshold difference (dB)\n(ours - ABRpresto)')
+    ax.set_ylim((-10, 10))
+    ax.set_yticks((-10, 0, 10))
     my.plot.despine(ax, which=('bottom', 'top', 'right'))  
     
     # Savefig
@@ -324,7 +326,8 @@ if PLOT_OUR_VS_PRESTO_THRESHOLDS_EXAMPLE_CONFIG:
     my.plot.despine(ax)
     
     # Savefig
-    f.savefig('figures/PLOT_OUR_VS_PRESTO_THRESHOLDS_EXAMPLE_CONFIG.svg')
+    f.savefig(
+        'figures/PLOT_OUR_VS_PRESTO_THRESHOLDS_EXAMPLE_CONFIG.svg')
     f.savefig(
         'figures/PLOT_OUR_VS_PRESTO_THRESHOLDS_EXAMPLE_CONFIG.png', dpi=300)
     
@@ -350,7 +353,6 @@ if PLOT_OUR_VS_PRESTO_THRESHOLDS_EXAMPLE_CONFIG:
     f.savefig(
         'figures/PLOT_OUR_VS_PRESTO_THRESHOLDS_EXAMPLE_CONFIG__swarm.svg')
     f.savefig(
-        'figures/PLOT_OUR_VS_PRESTO_THRESHOLDS_EXAMPLE_CONFIG__swarm.png', 
-        dpi=300)
+        'figures/PLOT_OUR_VS_PRESTO_THRESHOLDS_EXAMPLE_CONFIG__swarm.png', dpi=300)
 
 plt.show()

@@ -105,6 +105,7 @@ triggered_neural_l = []
 heartbeats_l = []
 heartbeats_waveform_l = []
 Pxx_df_l = []
+rms_abr_band_l = []
 keys_l = []
 
 # Iterate over recordings
@@ -294,6 +295,9 @@ for date, mouse, recording in tqdm.tqdm(recording_metadata.index):
     # Bandpass neural data into ABR band
     # Becomes an array at this point
     neural_data_hp = scipy.signal.filtfilt(ahi, bhi, neural_data_df, axis=0)
+    neural_data_hp_df = pandas.DataFrame(
+        neural_data_hp, 
+        index=neural_data_df.index, columns=neural_data_df.columns)
 
     # Extract highpassed neural data around triggers
     # Shape is (n_triggers, n_timepoints, n_channels)
@@ -322,11 +326,16 @@ for date, mouse, recording in tqdm.tqdm(recording_metadata.index):
     # Stack channel
     triggered_neural = triggered_neural.stack('channel', future_stack=True)
 
+    
+    ## Compute rms level of the signal in the ABR band
+    rms_abr_band = neural_data_hp_df.std()
 
+    
     ## Store
     click_params_l.append(click_params)
     triggered_ad_l.append(triggered_ad)
     triggered_neural_l.append(triggered_neural)
+    rms_abr_band_l.append(rms_abr_band)
     keys_l.append((date, mouse, recording))
 
 
@@ -350,6 +359,9 @@ big_heartbeat_info = pandas.concat(
 big_heartbeat_waveform = pandas.concat(
     heartbeats_waveform_l, 
     keys=keys_l, names=['date', 'mouse', 'recording'])
+big_rms_abr_band = pandas.concat(
+    rms_abr_band_l,
+    keys=keys_l, names=['date', 'mouse', 'recording']).unstack('channel')
     
 
 ## Store
@@ -365,3 +377,5 @@ big_heartbeat_info.to_parquet(
     os.path.join(output_directory, 'big_heartbeat_info'))
 big_heartbeat_waveform.to_parquet(
     os.path.join(output_directory, 'big_heartbeat_waveform'))
+big_rms_abr_band.to_parquet(
+    os.path.join(output_directory, 'big_rms_abr_band'))

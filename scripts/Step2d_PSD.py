@@ -48,6 +48,7 @@ experiment_metadata = metadata['experiment_metadata'].copy()
 
 
 ## Load previous results
+# Read PSD
 big_Pxx = pandas.read_parquet(
     os.path.join(output_directory, 'big_Pxx'))
 
@@ -55,6 +56,14 @@ big_Pxx = pandas.read_parquet(
 big_Pxx = my.misc.join_level_onto_index(
     big_Pxx, experiment_metadata[['after_HL', 'n_experiment']])
 big_Pxx = big_Pxx.xs(
+    False, level='after_HL').xs(0, level='n_experiment')
+
+# Read rms in ABR band
+big_rms_abr_band = pandas.read_parquet(
+    os.path.join(output_directory, 'big_rms_abr_band'))
+big_rms_abr_band = my.misc.join_level_onto_index(
+    big_rms_abr_band, experiment_metadata[['after_HL', 'n_experiment']])
+big_rms_abr_band = big_rms_abr_band.xs(
     False, level='after_HL').xs(0, level='n_experiment')
 
 
@@ -78,6 +87,14 @@ by_mouse = topl.groupby(['mouse', 'channel']).mean()
 # Aggregate across mice
 topl_mu = by_mouse.groupby('channel').mean()
 topl_err = by_mouse.groupby('channel').sem()
+
+
+## Aggregate ABR band RMS
+rms_abr_band_by_mouse = big_rms_abr_band.groupby('mouse').mean()
+
+# Stats over mice
+rms_abr_band_by_mouse_quantiles = rms_abr_band_by_mouse.quantile(
+    (0, .25, .5, .75, 1))
 
 
 ## Plot
@@ -149,6 +166,9 @@ with open(stats_filename, 'w') as fi:
     fi.write('first experiment only for each mouse\n')
     fi.write('aggregated within mouse and then across mice\n')
     fi.write('error bars: SEM over mice\n')
+    fi.write(
+        f'RMS in ABR band (quantiles):\n'
+        f'{rms_abr_band_by_mouse_quantiles * 1e6}\n')
 
 # Echo
 with open(stats_filename) as fi:

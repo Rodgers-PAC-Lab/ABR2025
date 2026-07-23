@@ -118,14 +118,15 @@ if STRIP_PLOT_ABRA_LATENCIES:
         include_waves, level='wave_name').reset_index()
     
     # A single ax with each swarm at its own ypos
-    f, ax = plt.subplots(figsize=(4, 4.7))
-    f.subplots_adjust(left=.15, bottom=.13, top=.95, right=.95)
+    f, ax = plt.subplots(figsize=(3.1, 4.7))
+    f.subplots_adjust(left=.2, bottom=.13, top=.95, right=.95)
 
     # Strip plot the latency
+    alpha = 0.5
     seaborn.stripplot(
         data=topl, x='latency_ms', y='level', hue='wave_name', 
         hue_order=include_waves, order=levels, orient='h', 
-        palette=wave_colors, size=2, alpha=1, jitter=0.3, 
+        palette=wave_colors, size=2, alpha=alpha, jitter=0.3, 
         ax=ax,
         )
 
@@ -328,7 +329,7 @@ if PLOT_ABRA_PEAKS_AT_LOUDEST_ACROSS_MICE:
                 # Plot
                 ax.plot(
                     [t], [y], 
-                    marker='o', color=color, ms=4, alpha=.75, clip_on=False)
+                    marker='o', color=color, ms=4, alpha=.75)
         
         
         ## Pretty

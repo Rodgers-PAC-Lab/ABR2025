@@ -188,98 +188,108 @@ neural_data_hp_df = pandas.DataFrame(
 
 
 ## Plot
-f, axa = plt.subplots(
-    2, 1, sharex=True, figsize=(7.5, 4.5), height_ratios=[4, 3])
-f.subplots_adjust(left=.1, right=.98, bottom=.14, top=.92, hspace=.4)
+PLOT_RAW_DATA = True
 
-# Timing params
-t_start = 295.5
-t_stop = 297.5
-ds_ratio = 10
+if PLOT_RAW_DATA:
+    f, axa = plt.subplots(
+        2, 1, sharex=True, figsize=(7.5, 4.5), height_ratios=[4, 3])
+    f.subplots_adjust(left=.1, right=.98, bottom=.14, top=.92, hspace=.4)
 
-# Color and channel params
-channel_order = ['VL', 'VR', 'RL'][::-1]
-channel2color = {'RL': 'k', 'VL': 'b', 'VR': 'r'}
+    # Timing params
+    t_start = 295.5
+    t_stop = 297.5
+    ds_ratio = 10
+
+    # Color and channel params
+    channel_order = ['VL', 'VR', 'RL'][::-1]
+    channel2color = {'RL': 'k', 'VL': 'b', 'VR': 'r'}
 
 
-## Plot raw data on each channel in the first axis
-for n_channel, channel in enumerate(channel_order):
-    # Get color
-    color = channel2color[channel]
+    ## Plot raw data on each channel in the first axis
+    for n_channel, channel in enumerate(channel_order):
+        # Get color
+        color = channel2color[channel]
+        
+        # Get ax
+        ax = axa[0]
+        
+        # Plot raw data (in microvolts)
+        ax.plot(
+            n_channel * 300 + neural_data_df.loc[:, channel].iloc[::ds_ratio] * 1e6, 
+            color=color, lw=.75)
+
+    # Pretty
+    ax.set_title('raw data')    
+    axa[0].set_ylim((-150, 1000))
+
+
+    ## Plot highpass data on each channel in the last three axes
+    for n_channel, channel in enumerate(channel_order):
+        # Get color
+        color = channel2color[channel]
+        
+        # Get ax
+        ax = axa[1]
+        
+        # Plot raw data (in microvolts)
+        ax.plot(
+            n_channel * 30 + neural_data_hp_df.loc[:, channel].iloc[::ds_ratio] * 1e6, 
+            color=color, lw=.75)
+
+    # Pretty
+    axa[1].set_ylim((-20, 75))
+
+
+    ## Plot stimulus bars
+    axa[0].plot(
+        click_params['t_samples'] / sampling_rate, 
+        [900] * len(click_params), 
+        '|', color='k', ms=4)
+
+
+    ## Set time axis
+    axa[1].set_title('bandpass filtered (ABR band)')
+    axa[1].set_xlim((t_start, t_stop))
+    axa[1].set_xlabel('time (s)')
+    axa[1].set_xticks([t_start, t_start + 1, t_start+2])
+    axa[1].set_xticklabels([0, 1, 2])
+
+
+    ## Pretty
+    # Scale bar
+    legend_xval = t_start - .2
+    axa[0].plot([legend_xval, legend_xval], [100, 400], 'k-', clip_on=False)
+    axa[0].text(legend_xval - .02, 250, f'300 {MU}V', ha='right', va='center', rotation=90)
+    axa[1].plot([legend_xval, legend_xval], [10, 40], 'k-', clip_on=False)
+    axa[1].text(legend_xval - .02, 25, f'30 {MU}V', ha='right', va='center', rotation=90)
+
+    # Labels
+    label_xval = t_start - .1
+    axa[0].text(label_xval, 900, 'audio', color='k', ha='center', va='center')
+    axa[0].text(label_xval, 600, 'VL', color='b', ha='center', va='center')
+    axa[0].text(label_xval, 300, 'VR', color='r', ha='center', va='center')
+    axa[0].text(label_xval, 0, 'RL', color='k', ha='center', va='center')
+    axa[1].text(label_xval, 60, 'VL', color='b', ha='center', va='center')
+    axa[1].text(label_xval, 30, 'VR', color='r', ha='center', va='center')
+    axa[1].text(label_xval, 0, 'RL', color='k', ha='center', va='center')
+
+    # Despine
+    for ax in axa[:-1]:
+        my.plot.despine(ax, which=('left', 'bottom', 'right', 'top'))
+        ax.set_yticks([])
+    my.plot.despine(axa[-1], which=('left', 'right', 'top'))
+    axa[-1].set_yticks([])
+
+
+    ## Savefig
+    f.savefig('figures/PLOT_RAW_DATA.svg')
+    f.savefig('figures/PLOT_RAW_DATA.png', dpi=300)
+
     
-    # Get ax
-    ax = axa[0]
+    ## Stats
+    # RMS within the ABR band (uV)
+    rms_in_abr_band = neural_data_hp_df.std() * 1e6
     
-    # Plot raw data (in microvolts)
-    ax.plot(
-        n_channel * 300 + neural_data_df.loc[:, channel].iloc[::ds_ratio] * 1e6, 
-        color=color, lw=.75)
-
-# Pretty
-ax.set_title('raw data')    
-axa[0].set_ylim((-150, 1000))
-
-
-## Plot highpass data on each channel in the last three axes
-for n_channel, channel in enumerate(channel_order):
-    # Get color
-    color = channel2color[channel]
     
-    # Get ax
-    ax = axa[1]
-    
-    # Plot raw data (in microvolts)
-    ax.plot(
-        n_channel * 30 + neural_data_hp_df.loc[:, channel].iloc[::ds_ratio] * 1e6, 
-        color=color, lw=.75)
-
-# Pretty
-axa[1].set_ylim((-20, 75))
-
-
-## Plot stimulus bars
-axa[0].plot(
-    click_params['t_samples'] / sampling_rate, 
-    [900] * len(click_params), 
-    '|', color='k', ms=4)
-
-
-## Set time axis
-axa[1].set_title('bandpass filtered (ABR band)')
-axa[1].set_xlim((t_start, t_stop))
-axa[1].set_xlabel('time (s)')
-axa[1].set_xticks([t_start, t_start + 1, t_start+2])
-axa[1].set_xticklabels([0, 1, 2])
-
-
-## Pretty
-# Scale bar
-legend_xval = t_start - .2
-axa[0].plot([legend_xval, legend_xval], [100, 400], 'k-', clip_on=False)
-axa[0].text(legend_xval - .02, 250, f'300 {MU}V', ha='right', va='center', rotation=90)
-axa[1].plot([legend_xval, legend_xval], [10, 40], 'k-', clip_on=False)
-axa[1].text(legend_xval - .02, 25, f'30 {MU}V', ha='right', va='center', rotation=90)
-
-# Labels
-label_xval = t_start - .1
-axa[0].text(label_xval, 900, 'audio', color='k', ha='center', va='center')
-axa[0].text(label_xval, 600, 'VL', color='b', ha='center', va='center')
-axa[0].text(label_xval, 300, 'VR', color='r', ha='center', va='center')
-axa[0].text(label_xval, 0, 'RL', color='k', ha='center', va='center')
-axa[1].text(label_xval, 60, 'VL', color='b', ha='center', va='center')
-axa[1].text(label_xval, 30, 'VR', color='r', ha='center', va='center')
-axa[1].text(label_xval, 0, 'RL', color='k', ha='center', va='center')
-
-# Despine
-for ax in axa[:-1]:
-    my.plot.despine(ax, which=('left', 'bottom', 'right', 'top'))
-    ax.set_yticks([])
-my.plot.despine(axa[-1], which=('left', 'right', 'top'))
-axa[-1].set_yticks([])
-
-
-## Savefig
-f.savefig('figures/PLOT_RAW_DATA.svg')
-f.savefig('figures/PLOT_RAW_DATA.png', dpi=300)
 
 plt.show()

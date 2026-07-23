@@ -467,11 +467,13 @@ if PLOT_ABR_POWER_VS_AGE:
         False, level='after_HL').droplevel('HL_type')
     
     # Compute average mouse age at time of recordings
+    # Use n_experiment == 0 (like big_abr_evoked_rms) and after_HL = False
     mouse_age = experiment_metadata[
-        experiment_metadata['after_HL'] == False
-        ].groupby('mouse')['age'].mean()
+        (experiment_metadata['after_HL'] == False) &
+        (experiment_metadata['n_experiment'] == 0)
+        ]['age'].droplevel('date').sort_index()
     
-    # Average response by mouse across speaker_side * channel
+    # Average response by mouse across speaker_side * channel, loudest level only
     # Note: This is significant for all channels and speaker_side separately,
     # though perhaps weaker for LR
     mouse_response = this_big_abr_evoked_rms.iloc[:, -1].groupby('mouse').mean()
@@ -550,6 +552,10 @@ if PLOT_ABR_POWER_VS_AGE:
     vs_response = scipy.stats.linregress(age_data['age'], age_data['response'])
     vs_thresh = scipy.stats.linregress(age_data['age'], age_data['threshold'])
     
+    # Overall quantile on ages (across all recordings)
+    quantiled_ages = list(experiment_metadata['age'].quantile(
+        (0, .25, .5, .75, 1), interpolation='nearest'))
+    
     # Write out stats
     n_mice = len(age_data)
     stats_filename = 'figures/STATS__PLOT_ABR_POWER_VS_AGE'
@@ -557,10 +563,10 @@ if PLOT_ABR_POWER_VS_AGE:
         fi.write(stats_filename + '\n')
         fi.write(f'n = {n_mice} mice, pre-HL only\n')
         fi.write(
-            'including pre-HL sessions only, '
+            'including first pre-HL session only, '
             'meaned thresh and rms response at highest level over '
             'channel * speaker_side (already meaned within mouse)\n'
-            'then correlated with age (meaned over recordings)\n'
+            'then correlated with age\n'
             )
         fi.write(
             f'response vs age: p={vs_response.pvalue:.4f}; '
@@ -568,7 +574,10 @@ if PLOT_ABR_POWER_VS_AGE:
             f'thresh vs age: p={vs_thresh.pvalue:.4f}; '
             f'r={vs_thresh.rvalue:.2f}; r2={vs_thresh.rvalue ** 2:.2f}\n'
             )
-    
+        fi.write(
+            f'over all recordings, age (min, q1, q2, q3, max) is '
+            f'{quantiled_ages}\n')
+
     # Echo
     with open(stats_filename) as fi:
         print(''.join(fi.readlines()))    
@@ -1011,9 +1020,9 @@ if PLOT_RMS_GROWTH_FUNCTIONS_W1_W4:
     ## Figure
     f, axa = plt.subplots(
         len(channel_l), len(speaker_side_l),
-        sharex=True, sharey=True, figsize=(5, 5.5))
+        sharex=True, sharey=True, figsize=(4.2, 4))
     f.subplots_adjust(
-        left=.17, right=.89, top=.93, bottom=.11, hspace=.15, wspace=.12)
+        left=.25, right=.89, top=.95, bottom=.15, hspace=.15, wspace=.12)
     
     # Plot each channel * speaker_side
     for n_channel, channel in enumerate(channel_l):
@@ -1129,9 +1138,9 @@ if PLOT_RMS_GROWTH_FUNCTIONS_AFTER_HL:
         # Figure
         f, axa = plt.subplots(
             len(channel_l), len(speaker_side_l),
-            sharex=True, sharey=True, figsize=(5, 5.5))
+            sharex=True, sharey=True, figsize=(4.2, 4))
         f.subplots_adjust(
-            left=.17, right=.89, top=.93, bottom=.11, hspace=.15, wspace=.12)
+            left=.25, right=.89, top=.95, bottom=.15, hspace=.15, wspace=.12)
 
         # Plot each channel * speaker_side
         for n_channel, channel in enumerate(channel_l):

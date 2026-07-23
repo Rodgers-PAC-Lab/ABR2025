@@ -50,11 +50,15 @@ experiment_metadata = metadata['experiment_metadata'].copy()
 
 ## Load previous results
 # Load results of Step2a1_align
-big_heartbeat_info = pandas.read_parquet(
-    os.path.join(output_directory, 'big_heartbeat_info'))
 big_heartbeat_waveform = pandas.read_parquet(
     os.path.join(output_directory, 'big_heartbeat_waveform'))
 
+# Like elsewhere, keep only the first pre-HL experiment
+big_heartbeat_waveform = my.misc.join_level_onto_index(
+    big_heartbeat_waveform, experiment_metadata[['after_HL', 'n_experiment']])
+big_heartbeat_waveform = big_heartbeat_waveform.xs(
+    False, level='after_HL').xs(0, level='n_experiment')
+    
 
 ## Aggregate
 # Mean waveform over recordings within session
@@ -63,20 +67,10 @@ mean_by_session = big_heartbeat_waveform.groupby(
     ).mean()
 
 # Mean waveform over sessions within mouse
-# TODO: check whether there is substantial variability within mouse over days
+# Now that we select only one session per mouse, this no longer does anything
 mean_by_mouse = mean_by_session.groupby(
     [lev for lev in mean_by_session.index.names if lev != 'date']
     ).mean()
-
-
-## Summarize waveform shape by session
-stats_by_session = big_heartbeat_info.groupby(
-    ['date', 'mouse', 'recording']).median()[
-    ['peak_heights', 'prominences', 'widths']]
-
-# Add on inter-beat interval
-stats_by_session['IBI'] = big_heartbeat_info['sample'].diff().dropna().groupby(
-    ['date', 'mouse', 'recording']).median()
 
 
 ## Plots
@@ -141,7 +135,8 @@ if PLOT_EKG_GRAND_MEAN:
     with open(stats_filename, 'w') as fi:
         fi.write(stats_filename + '\n')
         fi.write(f'n = {n_sessions} sessions from {n_mice} mice\n')
-        fi.write(f'aggregated within mouse, then across mice\n')
+        fi.write(f'first pre-HL session only\n')
+        fi.write(f'aggregated over recordings within mouse, then across mice\n')
         fi.write('error bars: SEM\n')
     
     # Echo

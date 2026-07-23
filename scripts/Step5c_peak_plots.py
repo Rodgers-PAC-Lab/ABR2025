@@ -68,10 +68,10 @@ big_ridges = pandas.read_parquet(
 
 
 ## Plot
-STRIP_PLOT_LATENCIES = True
-PLOT_EXAMPLE_WATERFALL = True
-PLOT_EXAMPLE_HEATMAP = True
-PLOT_PEAKS_AT_LOUDEST_ACROSS_MICE = True
+STRIP_PLOT_LATENCIES = False
+PLOT_EXAMPLE_WATERFALL = False
+PLOT_EXAMPLE_HEATMAP = False
+PLOT_PEAKS_AT_LOUDEST_ACROSS_MICE = False
 PLOT_PEAK_METRIC_BY_WAVE_AND_CONFIG = True
 PLOT_PEAK_GROWTH_FUNCTIONS = True
 PLOT_PEAK_GROWTH_FUNCTIONS_AFTER_HL = True
@@ -111,14 +111,15 @@ if STRIP_PLOT_LATENCIES:
                 ['mouse', 'level', 'wave_name']).size().max() <= 1        
         
         # A single ax with each swarm at its own ypos
-        f, ax = plt.subplots(figsize=(4, 4.7))
-        f.subplots_adjust(left=.15, bottom=.13, top=.95, right=.95)
+        f, ax = plt.subplots(figsize=(3.1, 4.7))
+        f.subplots_adjust(left=.2, bottom=.13, top=.95, right=.95)
 
         # Strip plot the latency
+        alpha = 0.5 if suffix == 'preHL' else 1
         seaborn.stripplot(
             data=topl, x='latency_ms', y='level', hue='wave_name', 
             hue_order=include_waves, order=all_levels[::-1], orient='h', 
-            palette=wave_colors, size=2, alpha=1, jitter=0.3, 
+            palette=wave_colors, size=2, alpha=alpha, jitter=0.3, 
             ax=ax,
             )
 
@@ -136,7 +137,6 @@ if STRIP_PLOT_LATENCIES:
         ## Savefig
         f.savefig(f'figures/STRIP_PLOT_LATENCIES_{suffix}.png', dpi=300)
         f.savefig(f'figures/STRIP_PLOT_LATENCIES_{suffix}.svg')
-
 
 if PLOT_EXAMPLE_WATERFALL:
     """Example ABR: waterfall plot with labeled peaks"""
@@ -404,20 +404,29 @@ if PLOT_PEAK_METRIC_BY_WAVE_AND_CONFIG:
     """Connected pairs plot of latency and height for each wave * config
     This is run only for the first recording of each mouse (one per mouse)
     Waves in subplots, channel * speaker_side on x-axis.
+    Points are colored by ipsi (green) vs contra (magenta), and a
+    significance bracket spans the ipsi-contra pair within each channel.
     """
     
     ## Params
     # Which waves to include
     wave_l = ['W1p', 'W1n', 'W2p', 'W4p']
+    pretty_name_l = ['wave 1 peak', 'wave 1 trough', 'wave 2 peak', 'wave 4 peak']
     
     # Config order for the x-axis
     config_order = ['VL L', 'VL R', 'VR L', 'VR R']
+    
+    # Color the points by ipsi vs contra
+    ipsi_color_d = {True: 'green', False: 'magenta'}
+    
+    # x-positions of the two configs to compare within each channel
+    bracket_x_d = {'VL': (0, 1), 'VR': (2, 3)}
     
     # Per-metric plotting params
     metric_params = {
         'latency_ms': {
             'label': 'latency (ms)',
-            'ylim': (1, 5),
+            'ylim': (1, 6),
             'yticks': (1, 3, 5),
             'invert_trough': False,
             },
@@ -452,7 +461,7 @@ if PLOT_PEAK_METRIC_BY_WAVE_AND_CONFIG:
         f, axa = plt.subplots(
             1, len(wave_l),
             sharex=True, sharey=True,
-            figsize=(8, 2.5)
+            figsize=(7, 2.1)
             )
         f.subplots_adjust(bottom=.24, left=.1, right=.95, top=.89, wspace=.4)
         
@@ -473,10 +482,11 @@ if PLOT_PEAK_METRIC_BY_WAVE_AND_CONFIG:
             if params['invert_trough'] and wave_name.endswith('n'):
                 this_wave[metric] = -this_wave[metric]
             
-            # Strip plot the metric for each config
+            # Strip plot the metric for each config, colored by ipsi
             seaborn.stripplot(
                 this_wave, x='config', y=metric,
-                marker=r'$\circ$', color='k', alpha=.5,
+                hue='ipsi', palette=ipsi_color_d, dodge=False, legend=False,
+                marker=r'$\circ$', alpha=.5,
                 order=config_order, ax=ax)
             
             # Connect configs within a mouse
@@ -492,14 +502,15 @@ if PLOT_PEAK_METRIC_BY_WAVE_AND_CONFIG:
             ax.set_xticks([0, 1, 2, 3])
             ax.set_xticklabels(['L', 'R', 'L', 'R'], rotation=0)
             ax.text(
-                0.5, -0.25, 'VL', ha='center', va='center',
+                0.5, -0.3, 'VL', ha='center', va='center',
                 transform=ax.get_xaxis_transform())
             ax.text(
-                2.5, -0.25, 'VR', ha='center', va='center',
+                2.5, -0.3, 'VR', ha='center', va='center',
                 transform=ax.get_xaxis_transform())            
             
             # Pretty
-            ax.set_title(wave_name)
+            if metric == 'latency_ms':
+                ax.set_title(pretty_name_l[wave_l.index(wave_name)])
             ax.set_xlabel('')
             ax.set_ylabel(params['label'])
             ax.set_ylim(params['ylim'])
@@ -534,6 +545,26 @@ if PLOT_PEAK_METRIC_BY_WAVE_AND_CONFIG:
             # Store
             stats_data_l.append(to_test)
             stats_keys_l.append(wave_name)
+            
+            
+            ## Mark each within-channel ipsi-contra comparison
+            for this_channel, pvalue in [('VL', ttp_VL), ('VR', ttp_VR)]:
+                
+                # Get sigstr (continue if n.s.)
+                sigstr = my.stats.pvalue_to_significance_string(pvalue)
+                if sigstr == 'n.s.':
+                    continue
+                
+                # Bracket in data x and axes y, so it ignores ylim
+                x_left, x_right = bracket_x_d[this_channel]
+                ax.plot(
+                    [x_left, x_right], [.90, .90],
+                    ls='-', color='k', lw=.75, clip_on=False,
+                    transform=ax.get_xaxis_transform())
+                ax.text(
+                    (x_left + x_right) / 2, .85, sigstr,
+                    ha='center', va='bottom',
+                    transform=ax.get_xaxis_transform())
         
         
         ## Stats output
@@ -564,13 +595,20 @@ if PLOT_PEAK_METRIC_BY_WAVE_AND_CONFIG:
             mean_metric.loc[:, True] - mean_metric.loc[:, False])
         mean_metric = mean_metric.T
         
+        # Calculate grand mean and SD (averaging over channel * ipsi first)
+        grand_data_to_agg = big_stats_data.mean(axis=1).unstack('wave')
+        grand_data = pandas.concat({
+            'grand_mean': grand_data_to_agg.mean(), 
+            'grand_std': grand_data_to_agg.std(), 
+            'grand_sem': grand_data_to_agg.sem(),
+            }, axis=1)
+        
         # Write out stats
         stats_filename = f'figures/STATS__PLOT_PEAK_METRIC_BY_WAVE_AND_CONFIG__{metric}'
         with open(stats_filename, 'w') as fi:
             fi.write(stats_filename + '\n')
             fi.write(f"n = {n_mice} mice\n")
-            fi.write(f"grand mean by wave:\n"
-                f"{big_stats_data.groupby('wave').mean().mean(axis=1).loc[wave_l]}\n")
+            fi.write(f"grand mean by wave:\n {grand_data}\n")
             fi.write(f"AOV pvals by wave:\n{big_aov_pvals.unstack('wave')[wave_l]}\n")
             fi.write(f"AOV fit by wave:\n{big_aov_fit.unstack('wave')[wave_l]}\n")
             fi.write(f"AOV sig by wave:\n{big_aov_sigstr.unstack('wave')[wave_l]}\n")
@@ -584,7 +622,6 @@ if PLOT_PEAK_METRIC_BY_WAVE_AND_CONFIG:
         ## Savefig
         f.savefig(f"figures/PLOT_PEAK_METRIC_BY_WAVE_AND_CONFIG__{metric}.svg")
         f.savefig(f"figures/PLOT_PEAK_METRIC_BY_WAVE_AND_CONFIG__{metric}.png", dpi=300)
-
 
 if PLOT_PEAK_GROWTH_FUNCTIONS:
     """Plot peak-amplitude growth functions vs sound level, colored by wave
@@ -625,9 +662,9 @@ if PLOT_PEAK_GROWTH_FUNCTIONS:
     ## Figure
     f, axa = plt.subplots(
         len(channel_l), len(speaker_side_l),
-        sharex=True, sharey=True, figsize=(5, 4))
+        sharex=True, sharey=True, figsize=(4.2, 4))
     f.subplots_adjust(
-        left=.17, right=.89, top=.95, bottom=.15, hspace=.15, wspace=.12)
+        left=.25, right=.89, top=.95, bottom=.15, hspace=.15, wspace=.12)
     
     # Plot each channel * speaker_side
     for n_channel, channel in enumerate(channel_l):
@@ -735,9 +772,9 @@ if PLOT_PEAK_GROWTH_FUNCTIONS_AFTER_HL:
         # Figure
         f, axa = plt.subplots(
             len(channel_l), len(speaker_side_l),
-            sharex=True, sharey=True, figsize=(5, 4))
+            sharex=True, sharey=True, figsize=(4.2, 4))
         f.subplots_adjust(
-            left=.17, right=.89, top=.95, bottom=.15, hspace=.15, wspace=.12)
+            left=.25, right=.89, top=.95, bottom=.15, hspace=.15, wspace=.12)
         
         # Plot each channel * speaker_side
         for n_channel, channel in enumerate(channel_l):
